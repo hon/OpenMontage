@@ -1,5 +1,5 @@
 import React from "react";
-import { loadFont } from "@remotion/google-fonts/SpaceGrotesk";
+import { loadFont } from "@remotion/google-fonts/NotoSansSC";
 import {
   AbsoluteFill,
   Audio,
@@ -38,7 +38,7 @@ const FPS = 30;
 
 const { fontFamily } = loadFont("normal", {
   weights: ["400", "500", "700"],
-  subsets: ["latin"],
+  subsets: ["latin", "chinese-simplified"],
 });
 
 const toneGradient = (tone: CinematicTone) => {
