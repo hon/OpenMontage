@@ -4,6 +4,27 @@ Start here. This is the complete operating guide and agent contract for OpenMont
 
 For architecture, key files, and conventions see [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md).
 
+## Hard Rules（硬性规则）
+
+以下规则贯穿所有会话，**违反即视为错误**：
+
+### HR-1：所有产出必须写入 projects/ 目录
+任何视频制作、资源生成、中间文件，**必须**写入 `projects/` 下。
+禁止写入 repo 根目录、`/tmp`、当前工作目录，或其他非 projects/ 的位置。
+
+### HR-2：项目命名必须包含日期
+项目目录格式为：`projects/YYYY-MM-DD-<kebab-case-title>/`
+示例：
+```
+projects/2026-07-24-trading-two-pillars/
+projects/2026-07-23-greed-anatomy/
+```
+日期前缀确保按时间自然排序。`YYYY-MM-DD` 使用制作开始的日期。
+
+### HR-3：必须走管线
+每次视频制作必须从 `pipeline_defs/` 中选择一个管线执行。
+不允许跳过管线直接调用工具或自定义工作流。
+
 ## First Interaction — Onboarding
 
 When the user's first message is vague, exploratory, or asks what you can do ("make me a video", "what can you do?", "help me create something", "I want to make content"), read the onboarding skill **before** doing anything else:
@@ -205,7 +226,7 @@ Infrastructure files:
 Every production run creates a project workspace under `projects/`. This directory is gitignored — all generated assets are regenerable.
 
 ```
-projects/<project-name>/
+projects/YYYY-MM-DD-<kebab-case-title>/
 ├── artifacts/          # JSON artifacts from each stage (research_brief, script, scene_plan, etc.)
 ├── assets/
 │   ├── images/         # Generated images (PNG)
@@ -217,7 +238,9 @@ projects/<project-name>/
     └── final.mp4       # Final rendered video (the deliverable)
 ```
 
-**Naming convention**: Use kebab-case derived from the video title (e.g., `hidden-math-of-nature`, `how-music-rewires-brain`).
+**Naming convention**: `YYYY-MM-DD-<kebab-case-title>` — 日期前缀 + 视频标题的 kebab-case。
+日期使用项目启动当天的日期（而不是制作过程中的日期）。
+示例：`2026-07-24-hidden-math-of-nature`、`2026-07-23-how-music-rewires-brain`
 
 At pipeline initialization, before any stage runs:
 
@@ -296,7 +319,12 @@ Then:
 2. Check every `required_tools` entry against the registry.
 3. Check `fallback_tools` for unavailable tools.
 4. Report one of: `passed`, `degraded`, or `blocked`.
-5. Do not start production until the user understands the real capability envelope.
+5. **Load user preferences.** Run:
+   ```bash
+   python -c "from lib.experience import load_preferences, summarize_preferences; prefs = load_preferences(); print(summarize_preferences(prefs))"
+   ```
+   Incorporate active preferences into proposal decisions (e.g., if `tts.preferred_provider: "kokoro"` is set, prefer Kokoro TTS). Log preference-driven decisions in `decision_log` as `category: "user_preference"`. Preferences are inputs, not overrides — deviate if the brief requires it, but document why.
+6. Do not start production until the user understands the real capability envelope.
 
 ### Provider Menu (Mandatory at Preflight)
 
@@ -566,6 +594,76 @@ Stage contract rules:
 - Non-canonical outputs such as media files belong in stage-specific directories.
 - Tools should record seeds/model versions for reproducibility.
 
+## User Experience System
+
+OpenMontage provides a cross-project experience retention system so each new
+production doesn't start from zero. Two files in the project root work together:
+
+### ``user_preferences.yaml`` — Stated Preferences
+
+User-editable YAML with declared preferences for TTS, image/video generation,
+music, render, style, budget, and environment settings. Every field is optional
+— ``null`` means "let the agent decide."
+
+**Agent behavior — preflight:**
+Read ``user_preferences.yaml`` via ``lib.experience.load_preferences()`` and
+incorporate active preferences into proposal decisions. For example, if
+``tts.preferred_provider: "kokoro"`` is set, prefer Kokoro TTS when selecting
+TTS tools, and log a ``decision_log`` entry (``category: "user_preference"``).
+Preferences are inputs, not overrides — if the brief or technical constraints
+require a different choice, document the deviation.
+
+**Agent behavior — proposal:**
+Run ``summarize_preferences()`` alongside the capability menu to show the user
+what preferences are active:
+
+```bash
+python -c "from lib.experience import summarize_preferences; print(summarize_preferences())"
+```
+
+### ``run_history.yaml`` — Accumulated Experience
+
+Append-only record of every completed production run: what tools were used, how
+well they worked, costs, and free-text lessons learned.
+
+**Agent behavior — proposal:**
+Read recent history to inform current decisions:
+
+```bash
+python -c "from lib.experience import load_run_history, summarize_recent_history; h = load_run_history(); print(summarize_recent_history(h))"
+```
+
+If a TTS provider was rated "poor" in the last several runs, deprioritize it.
+Mention relevant history in your proposal rationale.
+
+**Agent behavior — post-compose:**
+After compose completes successfully, append a run entry:
+
+```python
+from lib.experience import append_run_entry
+append_run_entry({
+    "project_id": "<project-id>",
+    "title": "<video-title>",
+    "pipeline": "<pipeline-type>",
+    "tts_provider": "<used-provider>",     # e.g. "kokoro"
+    "tts_voice": "<used-voice>",
+    "tts_rating": "great",                 # excellent / great / acceptable / poor
+    "render_runtime": "<runtime>",
+    "render_success": True,
+    "total_cost_usd": 0.0,
+    "duration_seconds": 89,
+    "notes": "What worked, what didn't, lessons for next time",
+    "preferences_learned": {
+        "tts": {"preferred_provider": "kokoro"}
+    },
+})
+```
+
+The ``notes`` field records subjective experience. The ``preferences_learned``
+field lets the agent suggest preference updates based on observed outcomes —
+these are suggestions; the user reviews and manually updates
+``user_preferences.yaml`` to lock them in.
+
 ## Reviewer Protocol
 
 The reviewer is a meta skill (`skills/meta/reviewer.md`) — advisory, never directly blocks progression.
@@ -698,6 +796,8 @@ The `.agents/skills/` directory is large. When you're not coming in through a to
 | How does a tool actually work? | the tool's `usage_location` from the registry |
 | How should this pipeline stage behave? | `skills/pipelines/<pipeline>/...` |
 | What is the checkpoint/review policy? | `skills/meta/` |
+| What are the user's saved preferences? | `lib.experience.load_preferences()` or `user_preferences.yaml` |
+| What happened in previous runs? | `lib.experience.load_run_history()` or `run_history.yaml` |
 
 ## What Not To Do
 

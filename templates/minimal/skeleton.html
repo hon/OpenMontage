@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920" data-duration="{{COMPOSITION_DURATION}}">
+
+      <!-- Background layer: crossfades independent of text clips.
+           First <img> is visible by default (no inline opacity:0);
+           subsequent <img> elements MUST have style="opacity:0". -->
+      <div id="bg-layer">
+        {{BACKGROUND_IMAGES_HTML}}
+      </div>
+
+      <!-- Text clips — each fills the 1080×1920 viewport.
+           Each scene contains per-sentence <div class="sentence"> elements.
+           Sentence timing is stored as fractions of scene duration (data-t, data-dur-frac)
+           so that sync-timings.py scene-level corrections scale proportionally. -->
+      {{SCENES_HTML}}
+
+      <!-- Title scene — overlays scene-1 initially, fades out after title duration.
+           Uses data-track-index="3" to render above both scene tracks (1 and 2). -->
+      {{TITLE_HTML}}
+
+      <!-- Audio tracks -->
+      <audio id="narration" src="assets/audio/narration.mp3" data-start="0" data-duration="{{NARRATION_DURATION}}" data-track-index="99"></audio>
+      {{BGM_HTML}}
+
+    </div>
+
+    <script>
+      (function() {
+        /* ============================================================
+           AUTO-GENERATED GSAP TIMELINE from data-* attributes
+           Supports per-sentence (.sentence) display for subtitles.
+           Sentence timing uses proportional fractions (data-t, data-dur-frac)
+           that auto-scale when sync-timings.py corrects scene duration.
+           ============================================================ */
+
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        var root = document.getElementById('root');
+        var scenes = document.querySelectorAll('.clip.text-clip');
+        var bgLayer = document.getElementById('bg-layer');
+        var bgImages = bgLayer ? bgLayer.querySelectorAll('.bg-img-layer') : [];
+        var totalDuration = parseFloat(root.dataset.duration) || 0;
+
+        /* ── Template animation config (generated from template.yaml) ── */
+        var CFG = {
+          zoomMax: 1.15,           // Ken Burns max scale
+          bgCrossfade: 0.5,        // bg crossfade duration (seconds)
+          textEntryDuration: 0.3,  // text slide-in duration
+          textExitDuration: 0.5,   // text fade-out duration
+          textEntryY: -30,         // text slide-in from y:-30 (px)
+          sceneFadeIn: 0.5,        // scene element opacity fade-in
+          exitPad: 1.0,            // text exit starts early: sceneEnd - exitPad
+        };
+
+        /* ============================================================
+           BACKGROUND — crossfade + alternating Ken Burns zoom
+           ============================================================ */
+
+        if (bgImages.length > 0) {
+          /* First bg: zoom from t=0 until first crossfade */
+          var firstScene = scenes[0];
+          var firstEnd = firstScene
+            ? parseFloat(firstScene.dataset.start) + parseFloat(firstScene.dataset.duration)
+            : totalDuration;
+          var firstCrossfade = Math.max(0, firstEnd - CFG.exitPad - CFG.bgCrossfade);
+          var firstZoomDur = Math.max(0.5, firstCrossfade);
+          tl.to(bgImages[0], { scale: CFG.zoomMax, duration: firstZoomDur, ease: "none" }, 0);
+
+          /* Subsequent bgs: crossfade at each scene's fade-out point */
+          for (var i = 0; i < scenes.length; i++) {
+            var s = scenes[i];
+            var sceneStart = parseFloat(s.dataset.start);
+            var sceneDur   = parseFloat(s.dataset.duration);
+            var sceneEnd   = sceneStart + sceneDur;
+            var crossfadeStart = Math.max(sceneStart, sceneEnd - CFG.exitPad - CFG.bgCrossfade);
+
+            if (bgImages[i] && bgImages[i + 1]) {
+              /* Zoom duration: from this crossfade until the next */
+              var nextScene = scenes[i + 1];
+              var nextEnd = nextScene
+                ? parseFloat(nextScene.dataset.start) + parseFloat(nextScene.dataset.duration)
+                : totalDuration;
+              var nextFx = nextScene
+                ? Math.max(parseFloat(nextScene.dataset.start), nextEnd - CFG.exitPad - CFG.bgCrossfade)
+                : totalDuration;
+              var zoomDur = Math.max(0.3, nextFx - crossfadeStart);
+
+              /* Crossfade: fade in next bg, fade out current */
+              tl.to(bgImages[i + 1], { opacity: 1, duration: CFG.bgCrossfade, ease: "power2.inOut" }, crossfadeStart);
+              tl.to(bgImages[i],     { opacity: 0, duration: CFG.bgCrossfade, ease: "power2.inOut" }, crossfadeStart);
+
+              /* Alternating Ken Burns: even i => zoom-in (to), odd i => zoom-out (from) */
+              if (i % 2 === 0) {
+                tl.to(bgImages[i + 1], { scale: CFG.zoomMax, duration: zoomDur, ease: "none" }, crossfadeStart);
+              } else {
+                tl.from(bgImages[i + 1], { scale: CFG.zoomMax, duration: zoomDur, ease: "none" }, crossfadeStart);
+              }
+
+              /* Hard-kill previous bg opacity after crossfade */
+              tl.set(bgImages[i], { opacity: 0 }, crossfadeStart + CFG.bgCrossfade + 0.01);
+            }
+          }
+        }
+
+        /* ============================================================
+           TITLE SCENE — fade-in at t=0, fade-out after title duration
+           Note: .title-clip is hidden via CSS (opacity:0 on the class),
+           so frame 0 shows hidden state without needing a tl.set() call.
+           ============================================================ */
+
+        var titleClip = document.querySelector('.clip.title-clip');
+        var titleDuration = 0;
+        if (titleClip) {
+          titleDuration = parseFloat(titleClip.dataset.duration) || 0;
+          var titleStart = parseFloat(titleClip.dataset.start) || 0;
+          var titleEnd   = titleStart + titleDuration;
+          var titleFadeOutStart = Math.max(titleStart + 0.3, titleEnd - CFG.textExitDuration);
+
+          tl.to(titleClip, { opacity: 1, duration: CFG.sceneFadeIn, ease: "power2.out" }, titleStart);
+          tl.to(titleClip, { opacity: 0, duration: CFG.textExitDuration, ease: "power2.in" }, titleFadeOutStart);
+          tl.set(titleClip, { opacity: 0 }, titleEnd);
+        }
+
+        /* ============================================================
+           TEXT CLIPS — per-sentence display with proportional timing
+           Each .sentence uses data-t (start fraction 0-1) and
+           data-dur-frac (duration fraction 0-1) relative to scene duration.
+           ============================================================ */
+
+        for (var j = 0; j < scenes.length; j++) {
+          var scene = scenes[j];
+          var start = parseFloat(scene.dataset.start);
+          var dur   = parseFloat(scene.dataset.duration);
+          var end   = start + dur;
+
+          /* Title offset: delay scene-1 sentence/overlay animations until title ends.
+             The title (data-track-index=3) overlays scene-1 visually; without this
+             delay, scene-1 sentences animate behind the title and may have already
+             faded out by the time the title disappears. */
+          var sentenceDelay = (j === 0 && titleDuration > 0) ? titleDuration : 0;
+
+          /* Text exit begins (end - exitPad), scene hides at data-end */
+          var textFadeOutStart = Math.max(start + 0.3, end - CFG.exitPad);
+          var hideTime = end;
+
+          /* Scene fade-in (at original start — scene is behind title, visible after title fades) */
+          tl.set(scene, { opacity: 0 }, start);
+          tl.to(scene, { opacity: 1, duration: CFG.sceneFadeIn, ease: "power2.out" }, start);
+
+          /* Overlay: fully visible during scene, fades at textFadeOutStart (original timing — bg unaffected by title offset) */
+          var overlay = scene.querySelector('.overlay');
+          if (overlay) {
+            tl.to(overlay, { opacity: 0, duration: CFG.textExitDuration, ease: "power2.in" }, textFadeOutStart);
+          }
+
+          /* ── Per-sentence animation ── */
+          var sentences = scene.querySelectorAll('.sentence');
+          if (sentences.length > 0) {
+            for (var k = 0; k < sentences.length; k++) {
+              var sent = sentences[k];
+              var tFrac    = parseFloat(sent.dataset.t) || 0;
+              var durFrac  = sent.dataset.durFrac ? parseFloat(sent.dataset.durFrac) : null;
+
+              /* Actual absolute times from proportional fractions
+                 sentenceDelay shifts scene-1 sentences to start after the title ends.
+                 narration/background remain at original time (play under title). */
+              var sentStart = start + tFrac * dur + sentenceDelay;
+              var sentEnd = durFrac !== null ? sentStart + durFrac * dur : textFadeOutStart;
+
+              /* When does this sentence start fading out?
+                 - If next sentence exists: just before next sentence's start time (overlap)
+                 - If last sentence: at textFadeOutStart */
+              var sentFadeOut;
+              if (k < sentences.length - 1) {
+                var nextT = parseFloat(sentences[k + 1].dataset.t) || 1;
+                var nextSentStart = start + nextT * dur + sentenceDelay;
+                /* Start fade-out slightly early so there's a brief overlap with next slide-in */
+                sentFadeOut = Math.max(sentStart + 0.2, nextSentStart - CFG.textExitDuration);
+              } else {
+                sentFadeOut = textFadeOutStart;
+              }
+
+              /* Initial: hidden and shifted up (at original start — title covers scene-1) */
+              tl.set(sent, { opacity: 0, y: CFG.textEntryY }, start);
+
+              /* Slide in at sentence start time (shifted for scene-1 if title present) */
+              tl.to(sent, { opacity: 1, y: 0, duration: CFG.textEntryDuration, ease: "power2.out" }, sentStart);
+
+              /* Fade out */
+              tl.to(sent, { opacity: 0, duration: CFG.textExitDuration, ease: "power2.in" }, sentFadeOut);
+            }
+          } else {
+            /* Fallback: no .sentence elements, animate entire scene-inner as before */
+            var inner = scene.querySelector('.scene-inner');
+            if (inner) {
+              tl.set(inner, { opacity: 0, y: CFG.textEntryY }, start);
+              tl.to(inner, { opacity: 1, y: 0, duration: CFG.textEntryDuration, ease: "power2.out" }, start);
+              tl.to(inner, { opacity: 0, duration: CFG.textExitDuration, ease: "power2.in" }, textFadeOutStart);
+            }
+          }
+
+          /* Hard-hide scene and all sentences at hideTime */
+          tl.set(scene, { opacity: 0 }, hideTime);
+          if (sentences.length > 0) {
+            for (var k = 0; k < sentences.length; k++) {
+              tl.set(sentences[k], { opacity: 0 }, hideTime);
+            }
+          } else {
+            var inner = scene.querySelector('.scene-inner');
+            if (inner) tl.set(inner, { opacity: 0 }, hideTime);
+          }
+          if (overlay) tl.set(overlay, { opacity: 0 }, hideTime);
+        }
+
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

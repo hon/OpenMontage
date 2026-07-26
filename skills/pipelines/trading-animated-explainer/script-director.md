@@ -1,266 +1,129 @@
-# Script Director — Explainer Pipeline
+# Script Director — Trading Explainer Pipeline
+
+## Customizations from base `animated-explainer/script-director.md`
+
+This file is forked and completely rewritten for the `trading-animated-explainer` pipeline:
+- **User provides copy** — no AI script generation. The user supplies the narration text.
+- **Format only** — the AI splits user copy into sections, assigns visual concepts (画面构思) and timing, and presents the structured plan for confirmation.
+- **No research, no proposal** — the user's copy IS the script. No fact-checking, no enhancement cues, no voice performance directions.
+- **Output is a structured table** — 段落/时间/画面构思/文案 — rendered for user approval, then converted to a machine-readable script artifact.
 
 ## When to Use
 
-You are the Script Writer for a generated explainer video. You have a `brief` artifact from the Idea Explorer. Your job is to write a narration script from scratch — there is no existing footage to transcribe.
-
-The script is the backbone of the video. Every visual, every scene, every audio cue flows from what you write here. A mediocre script cannot be saved by great visuals.
-
-## Prerequisites
-
-| Layer | Resource | Purpose |
-|-------|----------|---------|
-| Schema | `schemas/artifacts/script.schema.json` | Artifact validation |
-| Prior artifact | `proposal_packet` | Selected concept with title, hook, key_points, core_message, tone, narrative_structure, duration |
-| Prior artifact | `research_brief` (optional but high-value) | Data points, audience insights, expert quotes — ground the script in real facts |
-| Playbook | Active style playbook from `proposal_packet.selected_concept.suggested_playbook` | Voice style, pacing rules |
-| Meta skill | `skills/meta/voice-performance-director.md` | Structured TTS delivery cues for natural, expressive narration |
-| Layer 3 | TTS provider skills (check `agent_skills` on the selected TTS tool) | TTS capabilities for speaker directions |
+The user has provided their own narration copy. Your job is to:
+1. Parse the copy into logical sections (段落)
+2. Assign a timing budget to each section
+3. Suggest a visual concept (画面构思) for each section, following the simple template mode
+4. Format everything into the table below
+5. Present to the user for confirmation
+6. After confirmation, produce a structured script artifact for downstream stages
 
 ## Process
 
-### Step 1: Absorb the Proposal and Research
+### Step 1: Parse User Copy into Sections
 
-Read the `proposal_packet.selected_concept` carefully. Extract:
-- **Target duration** — this is your word budget (see timing table below)
-- **Hook** — your opening must deliver on this promise
-- **Key points** — these must all be covered in the script
-- **Core message** — the one thing the viewer should remember
-- **Tone** — shapes word choice, sentence length, formality
-- **Target audience** — shapes complexity and assumed knowledge
-- **Narrative structure** — the structural approach (myth_busting, journey, data_narrative, etc.)
+Given the user's narration text, split it into logical sections. Each section should be:
+- One coherent thought or narrative beat
+- 8-20 seconds of spoken time (adjustable based on content density)
+- Suitable for one background image scene
 
-Then read the `research_brief` for grounding material:
-- **`data_points`** — specific statistics and facts to weave into the script. Use claims with `surprise_factor: "surprising"` or `"counterintuitive"` as retention anchors.
-- **`audience_insights.misconceptions`** — if the narrative structure is `myth_busting`, these are your myth/reality pairs.
-- **`audience_insights.common_questions`** — address these directly in the script where they naturally fit.
-- **`expert_voices`** — quotable experts add authority. Use sparingly — one or two per script.
-- **`trending.recent_developments`** — if timely, reference them to make the content feel current.
+Use natural breaks in the user's copy (paragraph breaks, topic shifts, or punctuation) to determine section boundaries. Aim for 4-8 sections for a typical 60-90s video.
 
-**The research_brief is your cheat sheet.** Every fact, every surprising stat, every misconception is pre-verified and sourced. Use them. A script that cites "73% of developers..." (from research) is more compelling than one that says "many developers..."
+### Step 2: Assign Timing and Visual Concepts
 
-### Step 2: Deepen Research Where Needed
+For each section, determine:
+- **Timing (approximate only)**: Calculate a rough spoken duration. Chinese narration at ~2.5-3 characters/second. A 40-character sentence takes ~13-16 seconds. **This is just an estimate** — the real timing will be determined later from the actual narration audio.
+- **画面构思**: A one-line visual description following the pipeline's simple template (background image + text overlay). Describe the scenery mood and what text appears.
 
-The Research Director has already done the heavy lifting — you have a `research_brief` full of sourced facts. Your job here is targeted:
+> **Critical — correct subtitle sync order**: The final subtitle timing must be **derived from the narration audio**, NOT guessed in advance. The correct flow is:
+> 1. Generate Edge TTS audio with `--write-subtitles` (produces per-word timestamps)
+> 2. Merge per-word timestamps into sentence-level timing
+> 3. Use those timestamps to set `data-start`/`data-duration` on each sentence
+>
+> The table's "时间" column is a planning estimate. Actual timing is locked after TTS generation.
 
-1. **Verify and update**: If any data point from the research_brief feels stale or uncertain, re-search to confirm.
-2. **Fill script-specific gaps**: The research gives you broad facts. You may need a specific analogy, a precise technical detail, or a better example for a particular section.
-3. **Find the best explanation**: How do the best educators (3Blue1Brown, Kurzgesagt, Fireship, Veritasium) explain this concept? What analogies work?
-4. **Source quotable moments**: If the research_brief's expert_voices section has useful quotes, use them. If not, search for one strong quote to anchor a key section.
+### Step 3: Build the Confirmation Table
 
-**Do NOT duplicate the Research Director's work.** If the research_brief already has 6 data points, you don't need to find 6 more. Focus on script-level needs: the right word, the right analogy, the right sequence.
-
-### Step 3: Plan the Narrative Arc
-
-Before writing prose, plan the structure. Every explainer script follows a dramatic arc:
+Format the result as a Markdown table:
 
 ```
-HOOK (0-5s)     → Grab attention. Question, bold claim, or surprising fact.
-                   NEVER: "In this video, we'll learn about..."
-                   NEVER: "Hey guys, welcome back..."
-
-SETUP (5-15s)   → Why should the viewer care? Create a knowledge gap.
-                   Show the problem or the question. Make them NEED the answer.
-
-BUILD (15-Xs)   → Progressive revelation. Each section builds on the last.
-                   Use "therefore / but" transitions, NOT "and then."
-                   South Park rule: "This happened, THEREFORE that happened,
-                   BUT then this complication arose..."
-
-CLIMAX (X-5s before end) → The "aha" moment. Everything clicks into place.
-                            This is the payoff for the setup's knowledge gap.
-
-LANDING (last 5s) → Quick recap of core message + CTA.
-                     Don't introduce new information here.
+| **段落** | **时间** | **画面构思** | **文案** |
+| --- | --- | --- | --- |
+| **1. 开场 — 概率的本质** | 0:00-0:15 | Misty mountain lake at sunrise, calm reflective mood. 文字：市场是概率的游戏... | 市场是概率的游戏，充满了不确定性。很多时候你做了所有正确的事情，但市场依然给你一张亏损的单子。 |
+| **2. 挫折与门槛** | 0:15-0:30 | A person walking through wind and sand, blurred. 文字浮出："允许失败" | 很多人因为挫败感而离开。除非你允许自己失败，否则你很难生存下去。 |
+...
 ```
 
-Map each of the brief's `key_points` to a specific section in the BUILD phase.
+**Rules for 画面构思:**
+- Always natural scenery or simple visual metaphor — no complex animations, no diagrams, no charts
+- Specify what text appears on screen
+- Match scenery mood to the section's emotional tone
+- Keep descriptions to 1-2 sentences max
 
-### Step 4: Write the Script
+### Step 4: Present to User
 
-Before writing sections, create a top-level `voice_performance` plan using
-`skills/meta/voice-performance-director.md`. The plan must describe the vocal
-intent, pacing profile, energy curve, pause policy, and which section should be
-used for TTS sample approval. Do not leave this as a vague "natural voice" note.
+Present the table and ask for confirmation:
 
-Write each section with these fields:
+> 已根据您提供的文案，整理出以下视频脚本方案：
+>
+> [table]
+>
+> 请确认以上方案，或指出需要调整的段落/时间/画面构思。确认后将进入场景制作阶段。
+
+**Do NOT proceed beyond this point until the user confirms.**
+
+### Step 5: After Confirmation — Build Structured Script Artifact
+
+Once the user confirms (or requests changes), apply any adjustments then produce the machine-readable script:
 
 ```json
 {
-  "id": "s1",
-  "label": "Hook",
-  "text": "Your database searches every single row. Every. Single. One. What if it didn't have to?",
-  "start_seconds": 0,
-  "end_seconds": 5,
-  "speaker_directions": "Emphasize 'every single row' with measured pacing. Brief pause before the question.",
-  "delivery_cues": {
-    "pace": "measured",
-    "energy": "curious",
-    "emphasis_words": ["every", "single"],
-    "pause_after_seconds": 0.6,
-    "delivery_note": "Let the repetition feel intentional, then soften into the question.",
-    "provider_text": "Your database searches every single row. Every. Single. One. <break time=\"0.6s\"/> What if it didn't have to?"
-  },
-  "enhancement_cues": [
+  "script_sections": [
     {
-      "type": "animation",
-      "description": "Database table with rows highlighted one by one, slowing down as count increases",
-      "timestamp_seconds": 1
+      "id": "s1",
+      "label": "开场 — 概率的本质",
+      "text": "市场是概率的游戏，充满了不确定性。很多时候你做了所有正确的事情，但市场依然给你一张亏损的单子。",
+      "start_seconds": 0,
+      "end_seconds": 15,
+      "visual_concept": "Misty mountain lake at sunrise, calm reflective mood. Text overlay shows the narration sentence-by-sentence.",
+      "background_mood": "calm"
+    },
+    {
+      "id": "s2",
+      "label": "挫折与门槛",
+      "text": "很多人因为挫败感而离开。除非你允许自己失败，否则你很难生存下去。",
+      "start_seconds": 15,
+      "end_seconds": 30,
+      "visual_concept": "Sparse desert landscape with wind-blown sand, solitary figure silhouette. Text overlay emphasizes '允许失败'.",
+      "background_mood": "serious"
     }
   ],
-  "pronunciation_guides": []
+  "total_duration_seconds": 40,
+  "source": "user_provided",
+  "confirmation_status": "confirmed"
 }
 ```
 
-#### Timing Estimation
-
-| Pace | Words/minute | Use when |
-|------|-------------|----------|
-| Conversational | ~150 wpm | Default for most explainers |
-| Contemplative | ~120 wpm | Complex topics, need processing time |
-| Energetic | ~180 wpm | Short-form, high-energy, TikTok/Reels |
-| Technical | ~130 wpm | Code walkthroughs, architecture deep-dives |
-
-**Word budget by duration:**
-- 30s video → ~65-75 words
-- 60s video → ~130-150 words
-- 90s video → ~195-225 words
-- 120s video → ~260-300 words
-
-Count your words. If you're 20%+ over budget, the TTS will either rush or exceed duration. Cut ruthlessly.
-
-#### Speaker Directions
-
-Write directions that TTS can actually implement. Prefer structured
-`delivery_cues` over prose-only `speaker_directions`:
-
-| Direction | TTS Implementation |
-|-----------|-------------------|
-| "Speak slowly, with emphasis" | Lower speed setting, stability boost |
-| "Excited, picking up pace" | Higher speed, higher style setting |
-| "Pause for 1 second" | SSML `<break time="1s"/>` |
-| "Whisper" | SSML whisper tag (model-dependent) |
-| "Emphasize THIS word" | Note for post-processing or SSML emphasis |
-
-Avoid directions TTS can't do: "smile while speaking", "gesture toward screen", "look at camera."
-
-**Expressive narration rule:** every narration-led section must include at
-least two concrete cues among `pace`, `energy`, `emphasis_words`,
-`pause_before_seconds`, `pause_after_seconds`, `delivery_note`, or
-`provider_text`. Use `provider_text` when punctuation or SSML break tags are
-needed to make the read sound human.
-
-#### Enhancement Cues
-
-Every section should have at least one enhancement cue. These tell the Scene Planner and Asset Generator what visuals to create.
-
-| Cue Type | When to Use | Example |
-|----------|-------------|---------|
-| `overlay` | Key term, definition, label | "Show 'embedding' definition overlay" |
-| `diagram` | Process, architecture, flow | "Mermaid flowchart: query → encode → search → rank" |
-| `stat_card` | Surprising number or comparison | "Display: 1ms vs 500ms search time" |
-| `animation` | Concept that needs motion to understand | "Animate vectors moving through high-dimensional space" |
-| `code_snippet` | Code example | "Show Python: `results = collection.query(embedding)`" |
-| `broll` | Real-world context | "Show examples of apps using vector search" |
-
-**Density rule**: At least one enhancement cue every 8-10 seconds. A 60-second video should have 6-8 cues minimum. Viewers disengage if the visual doesn't change.
-
-#### Pronunciation Guides
-
-For technical terms, acronyms, and non-English words:
-
-```json
-{"word": "FAISS", "phonetic": "FACE"},
-{"word": "Qdrant", "phonetic": "kuh-DRANT"},
-{"word": "cosine", "phonetic": "CO-sign"}
-```
-
-### Step 5: Validate Against Playbook
-
-Read the active style playbook and verify:
-
-| Playbook Field | Script Impact |
-|----------------|---------------|
-| `identity.pace` | Match word density. `contemplative` = fewer words, longer pauses |
-| `audio.voice_style` | Shape tone of speaker directions |
-| `voice_performance` | Confirm pacing, pauses, and energy curve are explicit enough for TTS |
-| `motion.pacing_rules` | E.g., "hold establishing shots for 2s minimum" affects section timing |
-| `identity.mood` | Word choice: `warm` uses casual language; `professional` uses precise language |
-
 ### Step 6: Self-Evaluate
-
-Score your script (1-5):
 
 | Criterion | Question |
 |-----------|----------|
-| **Hook power** | Would someone stop scrolling in the first 3 seconds? |
-| **Word count accuracy** | Within ±10% of target for the duration? |
-| **Narrative flow** | Does each section build on the last? "Therefore/but" not "and then"? |
-| **Enhancement density** | At least one cue every 8-10 seconds? |
-| **Voice performance** | Are pauses, emphasis, pace, and sample section explicit? |
-| **Jargon management** | Technical terms explained or have pronunciation guides? |
-| **Climax payoff** | Does the aha moment deliver on the hook's promise? |
-| **CTA relevance** | Is the call to action specific and actionable? |
+| **Section boundaries** | Do sections follow natural pauses in the narration? |
+| **Timing** | Is each section's duration proportional to its text length? |
+| **Visual relevance** | Does each 画面构思 match the section's content and mood? |
+| **Completeness** | Is all user-provided copy covered? No omissions? |
 
-If any dimension scores below 3, revise before submitting.
+If any dimension fails, revise the table before presenting to the user.
 
 ### Step 7: Submit
 
 Call `handle_explainer_script(state, {"script": script_json})` to validate and persist.
 
-### Mid-Production Fact Verification
-
-If you encounter uncertainty during script writing:
-- Use `web_search` to verify factual claims before committing them to the script
-- Use `web_search` to find reference images for visual accuracy
-- Log verification in the decision log: `category="visual_accuracy_check"`
-
-Every factual claim in the script should be traceable to the `research_brief`.
-If you make a claim that isn't in the research, do additional research and
-add the source. Do not invent statistics, dates, or attributions.
-
 ## Common Pitfalls
 
-- **Writing too many words**: The #1 failure. TTS pacing is fixed. If you write 250 words for a 60-second video, either the audio will be rushed or the video will be 100 seconds. Count your words.
-- **Front-loading information**: The hook should create curiosity, not dump information. "HTTPS uses TLS 1.3 with AEAD ciphers" is a terrible opening. "The padlock icon doesn't mean what you think it means" is compelling.
-- **Missing enhancement cues**: A script without visual direction is a podcast script. Every section needs at least one cue telling the visual team what to show.
-- **Generic speaker directions**: "Read naturally" is useless. "Start measured and precise, then accelerate through the list to convey scale" is actionable.
-- **Forgetting the audience**: A script for CTOs should use different words than one for high schoolers, even if covering the same concept.
-- **No transitions between sections**: Each section should have a logical bridge to the next. The viewer should never think "wait, why are we talking about this now?"
-
-## Example: Well-Written Section
-
-```json
-{
-  "id": "s3",
-  "label": "The Core Idea",
-  "text": "Instead of matching keywords, vector databases convert everything — text, images, audio — into lists of numbers called embeddings. Similar things get similar numbers. So finding related content becomes a math problem: which numbers are closest?",
-  "start_seconds": 15,
-  "end_seconds": 28,
-  "speaker_directions": "Measured pace through 'text, images, audio' with slight pause between each. Speed up slightly on 'similar things get similar numbers' — it should feel like a revelation. Brief pause before the final question.",
-  "enhancement_cues": [
-    {
-      "type": "animation",
-      "description": "Show text/image/audio icons transforming into number arrays (embeddings). Arrays cluster by similarity in a 2D space.",
-      "timestamp_seconds": 16
-    },
-    {
-      "type": "stat_card",
-      "description": "Display: 'Everything becomes numbers. Similar things → similar numbers.'",
-      "timestamp_seconds": 22
-    }
-  ],
-  "pronunciation_guides": [
-    {"word": "embeddings", "phonetic": "em-BED-ings"}
-  ]
-}
-```
-
----
-
-## Gate Reminder (Binding)
-
-This stage gates on human approval (`human_approval_default: true`). After review passes:
-checkpoint with `status="awaiting_human"`, present the summary (the Backlot board renders
-the artifact), and **END YOUR TURN**. Do not start the next stage in the same response.
-Approval is per-gate — an earlier "go ahead" does not cover this gate.
+- **Adding to the copy**: Do NOT rewrite, summarize, or add to the user's copy. The text in the table must be exactly what the user provided.
+- **Skipping confirmation**: The table MUST be presented to the user and confirmed before proceeding. This is a hard gate.
+- **Overly complex visual concepts**: Keep 画面构思 simple — natural scenery + text overlay. No animations, diagrams, or charts.
+- **Uneven timing**: Don't assign 5s to a long paragraph and 20s to a short one. Proportion timing to text length.
+- **Multiple paragraphs in one section**: If the user provides a long block of text, split it into multiple scenes for visual variety.
+- **Ignoring mood shifts**: If the copy shifts from serious to hopeful, the background scenery should shift too.

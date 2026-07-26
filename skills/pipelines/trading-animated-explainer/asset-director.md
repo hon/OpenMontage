@@ -1,28 +1,47 @@
-# Asset Director — Explainer Pipeline
+# Asset Director — Trading Explainer Pipeline
+
+## Customizations from base `animated-explainer/asset-director.md`
+
+This file is forked from `skills/pipelines/animated-explainer/asset-director.md`.
+Changes made for the `trading-animated-explainer` pipeline:
+- **TTS locked to Edge TTS (zh-CN-YunyangNeural)** — `tts_selector` replaced with explicit Edge TTS CLI
+- **Runtime locked to HyperFrames** — no Remotion components; all scenes rendered via HTML/CSS/GSAP
+- **Subtitles generated via edge-tts --write-subtitles** — SRT with word-level timing, fed into HyperFrames
+- **Zero cost enforced** — all assets must be free; no paid AI generation (FLUX, GPT Image, ElevenLabs, etc.)
+- **Portrait 9:16 (mobile竖屏)** — all background images sourced as portrait (1080×1920 minimum); search orientation locked to `portrait`
+
+## Zero Cost Enforcement
+
+This pipeline has a **$0.00 budget**. No paid API calls are allowed:
+
+| Asset Type | Allowed Providers | Reason |
+|---|---|---|
+| Narration | Edge TTS (`zh-CN-YunyangNeural`) | Free, local CLI |
+| Background images | Stock photo APIs (Pexels, Unsplash, Pixabay) or local generation | Free/API-key-free image sources |
+| Diagrams | `diagram_gen` (Mermaid) | Free, local |
+| Code snippets | `code_snippet` | Free, local |
+| Music | Pixabay stock music search, or `music_library/` folder | Free stock, no paid generation |
+| Enhancement/transcription | Local tools only (ffmpeg, ffprobe) | Free |
+| Composition/render | HyperFrames (`npx hyperframes`) | Free, local Node.js |
+
+**If a free provider is unavailable (e.g. stock API rate-limited):** skip that asset type or use a local fallback. Do NOT default to a paid provider. Surface the limitation clearly in the asset manifest.
 
 ## When to Use
 
-You are the Asset Producer for a generated explainer video. You have a `scene_plan` with required assets and a `script` with narration text. Your job is to generate every asset needed: narration audio, images, diagrams, code snippets, and background music. Every file must exist on disk before you finish.
+You are the Asset Producer for a generated trading explainer video. You have a `scene_plan` with required assets and a `script` with narration text. Your job is to generate every asset needed: narration audio, images, diagrams, code snippets, and background music. Every file must exist on disk before you finish.
 
 This is where plans become real files. A missing or low-quality asset will torpedo the final video.
 
-## Animation authoring — which runtime
+## Animation authoring — HyperFrames-only
 
-Before authoring any animated Remotion component for this pipeline, read **`skills/meta/animation-runtime-selector.md`**. It's the routing authority for deciding between Remotion primitives and GSAP plugins.
+This pipeline is locked to HyperFrames (HTML/CSS/GSAP). All animated scenes render through HyperFrames, not Remotion.
 
-Quick routing for common explainer needs:
+For scene animation patterns read:
+- `.agents/skills/hyperframes-animation/SKILL.md` — animation blueprints, GSAP timelines, scene transitions
+- `.agents/skills/gsap-timeline/SKILL.md` — GSAP timeline sequencing for multi-tween choreography
+- `.agents/skills/gsap-plugins/SKILL.md` — GSAP plugins (SplitText, DrawSVG) for kinetic typography and line reveals
 
-| Scene type | Recommended approach |
-|---|---|
-| Title card, fade, slide, scale | Remotion primitives — `interpolate()` + `spring()` |
-| Word-level caption highlight synced to narration | Existing `CaptionOverlay` component (already in `remotion-composer/src/components/`) |
-| Per-character kinetic typography ("words explode in one letter at a time") | GSAP SplitText — read `.agents/skills/gsap-plugins/SKILL.md` |
-| Multi-step choreography across 4+ tweens | GSAP timeline — read `.agents/skills/gsap-timeline/SKILL.md` |
-| Logo build (line drawing, stroke reveal) | GSAP DrawSVG — read `.agents/skills/gsap-plugins/SKILL.md` |
-| Data chart (bar/line/pie/KPI) | Remotion built-in chart components — see `remotion-composer/SCENE_TYPES.md` |
-| Terminal or CLI demo | Remotion TerminalScene — read `.agents/skills/synthetic-screen-recording/SKILL.md` |
-
-**The keep-it-simple bias:** if Remotion primitives solve a scene in ≤ 20 lines, use them. Only pull in GSAP when the plugin genuinely earns its bundle weight.
+**Data charts (bar/line/pie/KPI):** Use HyperFrames registry chart components via `hyperframes add chart` or author CSS/SVG-based chart sections. Do NOT use Remotion chart components — they are not available in this pipeline.
 
 ## Prerequisites
 
@@ -31,7 +50,7 @@ Quick routing for common explainer needs:
 | Schema | `schemas/artifacts/asset_manifest.schema.json` | Artifact validation |
 | Prior artifacts | `state.artifacts["scene_plan"]["scene_plan"]`, `state.artifacts["script"]["script"]`, `state.artifacts["proposal"]["proposal_packet"]` | What to produce |
 | Playbook | Active style playbook | Image prompts, diagram style, audio preferences |
-| Tools | `tts_selector`, `image_selector`, `video_selector`, `diagram_gen`, `code_snippet`, `music_gen` — selectors auto-discover all available providers from the registry | Generation capabilities |
+| Tools | `edge-tts` (CLI), `image_selector`, `video_selector`, `diagram_gen`, `code_snippet`, `music_gen` | Generation capabilities |
 | Cost tracker | `tools/cost_tracker.py` | Budget governance |
 
 ## Process
@@ -51,26 +70,24 @@ Asset Task:
 ```
 
 Also create tasks for:
-- **Narration audio** — one per script section (use `tts_selector` or a concrete TTS provider)
+- **Narration audio** — one per script section (use Edge TTS `zh-CN-YunyangNeural`)
 - **Background music** — one track for the whole video (use `music_gen` or select from library)
 - **Sound effects** — per playbook's `sfx_style` (optional, use `music_gen` or stock)
 
-### Step 2: Check Budget
+### Step 2: Check Budget (Zero-Cost Pipeline)
 
-Before generating anything:
-1. Sum all estimated costs from the asset tasks
-2. Compare against the cost tracker's remaining budget
-3. If over budget:
-  - Switch expensive tools to cheaper alternatives (use `tts_selector` with `preferred_provider` to route to cheaper TTS; use `image_selector` to route to cheaper image providers)
-   - Reduce image count (combine similar scenes)
-   - Skip optional assets (SFX, B-roll)
-4. Get cost approval via cost tracker before proceeding
+This pipeline has a **$0.00 budget**. No tool or API call may incur a cost:
+
+1. Verify every asset task uses a free provider (stock photo, local tool, etc.)
+2. If a required asset type has no free provider available, surface it as a blocker — do not silently skip or downgrade
+3. The cost tracker should report `$0.00` total for all assets; if any line item shows a cost > $0, find a free alternative or skip that asset
+4. No approval gate needed for $0 cost — proceed directly to generation
 
 ### Step 2b: Sample Preview (Prevents Wasted Spend)
 
 Before batch-generating assets, produce one sample of each expensive asset type and present them to the user for approval:
 
-1. **TTS sample**: Generate narration for `script.voice_performance.sample_section_id` when present; otherwise pick the section with the most demanding delivery. Play it for the user. Confirm voice, pace, pauses, emphasis, and tone are acceptable before generating the rest.
+1. **TTS sample**: Generate narration for `script.voice_performance.sample_section_id` when present; otherwise pick the section with the most demanding delivery using Edge TTS (`zh-CN-YunyangNeural`). Play it for the user. Confirm voice, pace, pauses, emphasis, and tone are acceptable before generating the rest. Edge TTS is free — samples cost nothing.
 2. **Image sample**: Generate one image for the most representative scene. Show it to the user. Confirm the style, quality, and prompt approach before batch-generating all images.
 3. **Music sample** (if using `music_gen`): Generate one short clip. Confirm mood and energy before committing.
 
@@ -81,42 +98,128 @@ If the user rejects a sample:
 
 This step typically costs $0.03–0.08 total and prevents $1–3 of wasted generation.
 
-### Step 3: Generate Narration
+### Step 3: Generate Narration (Edge TTS — zh-CN-YunyangNeural)
+
+This pipeline uses **Edge TTS** with **`zh-CN-YunyangNeural`** (Chinese male voice) as the sole TTS provider. Edge TTS is free, offline-capable, and provides SRT subtitle output via `--write-subtitles`.
+
+**Prerequisite check:** Before generating, verify `edge-tts` is installed:
+```bash
+pip install edge-tts
+edge-tts --list-voices | grep YunyangNeural
+# Expected: Name: zh-CN-YunyangNeural
+```
+
+**Per-section generation:**
 
 For each script section:
-1. Extract the narration text
+1. Extract the narration text (Chinese)
 2. Read `script.voice_performance` and section `delivery_cues`
-3. Use `delivery_cues.provider_text` when present; otherwise transform the section text with purposeful punctuation and break tags only when the selected provider supports them
-4. Apply speaker directions from the script (pace, emphasis, emotion)
-5. Apply the playbook's `audio.voice_style`
-6. Map cues to provider parameters:
-   - OpenAI: `instructions` only with `model: "gpt-4o-mini-tts"`; use `response_format` for output format
-   - Google TTS: `input_type: "ssml"` when using `<break>` tags, plus `speaking_rate` in `0.25..2.0` and `pitch` in `-20..20`
-   - ElevenLabs: `stability`, `similarity_boost`, `style`, `speed`, and `use_speaker_boost`
-7. Generate using `tts_selector` — it auto-routes to the best available TTS provider based on user preference and availability. Check the registry's `best_for` fields to understand each provider's strengths.
-8. Record the applied `voice_performance` metadata on each narration asset
-9. Verify the audio file exists and duration matches expected timing (±15%)
+3. Apply speaker directions via Edge TTS parameters:
+   - `--rate` — speaking rate adjustment (`+0%` default, `-20%` for slow/emphatic, `+20%` for energetic)
+   - `--pitch` — pitch adjustment (`+0Hz` default, `-10Hz` for deeper, `+10Hz` for brighter)
+   - `--volume` — volume level (`+0%` default)
+4. Generate with subtitle export:
+   ```bash
+   edge-tts \
+     --voice zh-CN-YunyangNeural \
+     --text "<section text>" \
+     --rate <rate_adjustment> \
+     --pitch <pitch_adjustment> \
+     --write-media "projects/<project>/assets/narration/s<section_num>.mp3" \
+     --write-subtitles "projects/<project>/assets/narration/s<section_num>.srt"
+   ```
+5. The `--write-subtitles` flag produces SRT with word-level timing — this feeds into the compose stage for HyperFrames subtitle overlay
+6. Verify the audio file exists and duration matches expected timing (±15%)
+7. Record the applied `voice_performance` metadata on each narration asset
 
-**Pronunciation guide**: If the script contains technical terms, jargon, or names with non-obvious pronunciation, include a pronunciation map in the TTS request.
+**Edge TTS parameter cheat-sheet:**
+| Parameter | Range | Effect |
+|-----------|-------|--------|
+| `--rate` | `-50%` to `+50%` | Speaking speed. Default `+0%`. Use `-10%` to `-20%` for instructional/emphatic delivery. |
+| `--pitch` | `-50Hz` to `+50Hz` | Voice pitch. Default `+0Hz`. Use `-15Hz` to `-30Hz` for deeper/authoritative. |
+| `--volume` | `-50%` to `+50%` | Audio gain. Default `+0%`. |
 
-**Flat voice failure:** If the approved voice sounds monotone, robotic, rushed,
-or ignores intended pauses, do not batch the remaining sections. Revise the
-`voice_performance` plan or provider parameters and regenerate the sample.
+**Pronunciation guide:** Edge TTS handles Chinese well by default. For technical terms (English acronyms, trading jargon), ensure they are embedded with natural Chinese prosody. If Edge TTS mispronounces a term, add a SSML phoneme tag:
+```xml
+<phoneme alphabet="sapi" ph="jiā yì">交易</phoneme>
+```
+Use this only as a last resort — Edge TTS Chinese models are generally accurate.
+
+**Flat voice failure:** If the generated voice sounds monotone, robotic, rushed,
+or ignores intended pauses, do not batch the remaining sections. Adjust `--rate`
+and `--pitch` parameters, add punctuation-based pauses in the text, and regenerate the sample.
+
+**Full narration concat:** After all sections are generated, concatenate them into a single file for HyperFrames:
+```bash
+ffmpeg -f concat -safe 0 -i <(for f in projects/<project>/assets/narration/s*.mp3; do echo "file '$PWD/$f'"; done) \
+  -c copy "projects/<project>/assets/audio/narration.mp3"
+```
+Concatenate SRT files similarly for a master subtitle track. The compose stage runs `sync-timings.py` to fine-correct all timings against ASR transcription.
 
 ### Step 4: Generate Visual Assets
 
 Process asset tasks grouped by tool for efficiency:
 
-**Images (`image_selector`)**:
-1. Build the prompt from the scene's actual purpose:
-   - scene-specific shot/lighting/texture cues from `shot_language`, `shot_intent`, and `texture_keywords`
-   - an adapted visual anchor from the playbook or custom identity
-   - the concrete subject/action/environment
-   Use `lib/shot_prompt_builder.py` when helpful.
-2. Add negative prompt from playbook
-3. Include consistency anchors (same character/world/palette family), but do NOT reuse the exact same phrasing for every image
-4. Generate and verify the file exists
-5. If the result doesn't match expectations, refine the prompt and regenerate (max 2 retries)
+**Background images — natural scenery (free stock photo APIs)**:
+
+Every scene needs a full-HD natural scenery background. Source one per scene (`scene-<id>-bg.jpg`), plus one fallback (`bg-default.jpg`).
+
+Use **free stock photo APIs** — do NOT use paid AI image generation (FLUX, GPT Image, etc.). Prefer `pexels_search`, `unsplash_search`, or `pixabay_search` tools if available, or download directly via web_search + webfetch.
+
+**Search formula — natural scenery photos:**
+
+Search for real photographs matching the scene's emotional tone:
+
+| Scene Mood | Example Search Query |
+|---|---|
+| Calm/educational | "misty mountain lake sunrise high resolution landscape" |
+| Urgent/exciting | "storm clouds ocean dramatic sky landscape photograph" |
+| Hopeful/inspiring | "sunlight through forest golden hour nature photograph" |
+| Serious/weighty | "deep canyon twilight dramatic rock formation landscape" |
+| Neutral/general | "lush green hills morning light rolling landscape" |
+
+**Search parameters:**
+```
+query: <search terms>
+min_width: 1080
+min_height: 1920
+orientation: portrait
+```
+
+**Download to correct path:** `projects/<project>/assets/images/scene-<scene_id>-bg.jpg`
+
+**Stock photo API key note:** Pexels, Unsplash, and Pixabay all offer free API keys. If none are configured, fall back to web_search for free-license landscape photos on sites like Wikimedia Commons or Pexels direct download.
+
+**Rules:**
+- Always 1080×1920 portrait minimum (9:16) — the HyperFrames composition treats background images as full-viewport cover
+- No text, no people, no urban elements — these are pure nature backgrounds
+- Vary the scenery type between scenes (no back-to-back identical biomes)
+- Source all backgrounds first, then any content-specific assets
+- If multiple scenes, vary the biome (mountain ↔ ocean ↔ forest ↔ canyon ↔ lake)
+
+**Output naming:** `projects/<project>/assets/images/scene-<scene_id>-bg.jpg`
+
+**Fallback:** If a scene somehow lacks a dedicated background, `projects/<project>/assets/images/bg-default.jpg` is used.
+
+**Background video alternative (one full-duration video instead of per-scene images):**
+
+If a suitable free stock video is found (e.g., Pixabay video, Pexels video — nature scene, slow motion, loopable), download a single video to serve as background for the entire video:
+
+1. Search for portrait/vertical stock video (9:16, 1080×1920 or higher):
+   ```
+   query: <nature scene matching video mood>
+   orientation: portrait
+   min_duration: <total video duration>
+   ```
+2. If no single video covers the full duration, download the longest available and it will loop during render
+3. Download to: `projects/<project>/assets/video/background.mp4`
+4. Verify with ffprobe (resolution, duration, codec)
+5. If video background is used, set `background_type: "video"` in the asset manifest instead of per-scene images
+6. **Note**: Mute the video's audio track if it has one — narration and music are the audio layers
+
+**If no portrait stock video is available:** fall back to per-scene background images (the default). Do not use landscape video cropped to portrait.
+
+(Beyond backgrounds, this pipeline does NOT generate content-specific images, diagrams, charts, or illustrations. All scenes use the same text-over-background template.)
 
 **Diagrams (`diagram_gen`)**:
 1. Convert the scene description into valid Mermaid syntax
@@ -127,21 +230,22 @@ Process asset tasks grouped by tool for efficiency:
 **Code snippets (`code_snippet`)**:
 1. Extract language and code from the scene description
 2. Apply syntax highlighting theme from playbook's overlay styles
-3. Generate highlighted image or Remotion-compatible data
+3. Generate highlighted image or HyperFrames-compatible inline SVG
 
-### Step 5: Generate Music
+### Step 5: Generate Music (Free Stock Only)
+
+This pipeline has a $0 budget — no paid music generation.
 
 1. Read playbook's `audio.music_mood` and `audio.music_volume`
 2. Check the music decision from `proposal_packet.production_plan.music_source` (set by the Proposal Director)
-3. Source the background track in this priority order:
-   - **User-selected library track**: If the proposal specified a track from `music_library/`, copy it to `projects/<project>/assets/music/background_music.mp3`
-   - **User music library (`music_library/`)**: If the folder exists and has tracks, pick the best match for the playbook's `audio.music_mood`. List candidates by filename and let the EP decide.
-   - **Music generation API**: Use `music_gen` (ElevenLabs) or `suno_music` if available. Check status via registry first — if the tool is unavailable or quota-exhausted, skip immediately (do NOT attempt and fail silently).
-   - **No music available**: Log this clearly in the asset manifest as `"music_status": "unavailable"` with the reason. Do NOT silently produce a video without music — the EP and user should know.
+3. Source the background track in this priority order (all free):
+   - **User music library (`music_library/`)**: If the folder exists and has tracks, pick the best match for the playbook's `audio.music_mood`. Copy to `projects/<project>/assets/music/background_music.mp3`.
+   - **Pixabay stock music search**: Search via `pixabay_search(query=<mood+genre>, music=true)` or web search for royalty-free music. Download the best match.
+   - **No music available**: If no free source is found, set `"music_status": "unavailable"` in the asset manifest. The video proceeds without background music — this is acceptable for zero-cost production. Report it clearly.
 4. Duration should be at least as long as total video duration. If shorter, it can be looped by the compose stage.
 5. Verify the audio file exists at `projects/<project>/assets/music/background_music.mp3`
 
-**Critical:** If music generation fails or is unavailable, report it immediately in the asset manifest — do not defer the problem to the compose stage.
+**Critical:** Do NOT use `music_gen` (ElevenLabs) or `suno_music` — they are paid APIs. If no free music is found, proceed without music rather than failing the budget.
 
 ### Step 6: Build Asset Manifest
 
@@ -156,70 +260,86 @@ Assemble all generated assets into the manifest:
       "type": "audio",
       "subtype": "narration",
       "path": "assets/narration/s1.mp3",
-      "source_tool": "tts_selector",
+      "source_tool": "edge_tts",
       "scene_id": "scene-1",
       "duration_seconds": 8.2,
-      "cost_usd": 0.003
+      "cost_usd": 0.00
     },
     {
-      "id": "img-scene-3",
+      "id": "bg-scene-1",
       "type": "image",
-      "path": "assets/images/scene-3-diagram.png",
-      "source_tool": "diagram_gen",
+      "subtype": "background",
+      "path": "assets/images/scene-1-bg.jpg",
+      "source_tool": "pexels_search",
+      "scene_id": "scene-1",
+      "cost_usd": 0.00,
+      "source_url": "https://www.pexels.com/photo/..."
+    },
+    {
+      "id": "bg-scene-2",
+      "type": "image",
+      "subtype": "background",
+      "path": "assets/images/scene-2-bg.jpg",
+      "source_tool": "pexels_search",
+      "scene_id": "scene-2",
+      "cost_usd": 0.00,
+      "source_url": "https://www.pexels.com/photo/..."
+    },
+    {
+      "id": "bg-scene-3",
+      "type": "image",
+      "subtype": "background",
+      "path": "assets/images/scene-3-bg.jpg",
+      "source_tool": "pexels_search",
       "scene_id": "scene-3",
-      "cost_usd": 0.00
+      "cost_usd": 0.00,
+      "source_url": "https://www.pexels.com/photo/..."
     },
     {
       "id": "music-bg",
       "type": "audio",
       "subtype": "music",
       "path": "assets/music/background.mp3",
-      "source_tool": "music_gen",
+      "source_tool": "pixabay_music",
       "duration_seconds": 62,
-      "cost_usd": 0.05
+      "cost_usd": 0.00
     }
   ],
-  "total_cost_usd": 0.053,
+  "total_cost_usd": 0.00,
   "generation_summary": {
     "narration_sections": 5,
-    "images_generated": 8,
-    "diagrams_generated": 2,
+    "background_images": 3,
     "music_tracks": 1
   }
 }
 ```
 
-### Pre/Post Self-Review for Generation Prompts
+### Pre/Post Self-Review for Background Image Selection
 
-> Before sending a prompt to any generation tool — `image_selector`, `diagram_gen`, `video_selector`, even `code_snippet` styling prompts — run a three-step self-review modeled on the CHAI oversight loop ("Building a Precise Video Language with Human-AI Oversight", arXiv 2604.21718v2). Cost is small (no extra tool calls); benefit is large (avoids wasted generations). This applies just as strongly to `diagram_gen` Mermaid prompts and `image_selector` illustration prompts as it does to video generation — bad explainer visuals fail in the same way: missing subject, missing framing, vague "make it look educational."
->
-> **Step 1 — Pre-caption pass.** Write the prompt the way you'd write it today. Do not over-edit; aim for a complete first draft.
->
-> **Step 2 — Critique pass.** Score the draft against the 5-aspect checklist (Subject / Subject Motion / Scene / Spatial Framing / Camera). For each aspect:
-> - Is it specified? If not, is the omission deliberate (e.g., "Camera N/A — Remotion native scene", "no subject motion — static diagram") or accidental?
-> - Are confusable terms disambiguated? (dolly vs zoom, pan vs truck, bird's-eye vs aerial, fisheye vs barrel, full shot vs close-up; for diagrams: flowchart vs sequence vs state diagram, top-down vs left-right)
-> - Are emotional adjectives ("clean", "professional", "modern") replaced with their visual causes (sans-serif typography, generous whitespace, monochromatic palette with one accent)?
-> - For multi-shot prompts: is identity anchored verbatim across shots? For `image_selector` prompts that recur (a character or world appearing in multiple scenes), are consistency anchors specified verbatim?
->
-> **Step 3 — Post-caption pass.** Rewrite filling the missing aspects, fixing confusable terms, and replacing subjective language. The post-caption is what gets sent to the generation tool.
->
-> Log the (pre, critique, post) triplet in the asset metadata for traceability. This mirrors the CHAI workflow and creates a record the reviewer can audit.
+For stock photo search queries, use simple search terms that describe the scene directly. No AI prompt engineering needed — stock APIs search by keywords, not captions. Just ensure:
+- Query contains scenery type + mood + "portrait": e.g., `"misty mountain lake sunrise portrait"`
+- The result image width ≥ height (portrait orientation)
 
 ### Step 7: Verify All Assets
 
 **Existence check:**
 - [ ] Every asset `path` exists on disk
 - [ ] Every narration section has a corresponding audio file
-- [ ] Every scene with `required_assets` has all assets generated
-- [ ] Background music file exists
+- [ ] Every scene has a background image (`scene-<id>-bg.jpg`)
+- [ ] Fallback `bg-default.jpg` exists (for scenes without dedicated background)
+- [ ] Background music file exists (or `"music_status": "unavailable"` recorded)
 
 **Quality check:**
 - [ ] Narration durations within ±15% of expected timing
 - [ ] Narration assets record `voice_performance.delivery_cues_applied`
-- [ ] Approved TTS sample uses the same provider, voice, and expressive settings as the batch
-- [ ] Images match the playbook's style (review consistency anchors)
-- [ ] Diagrams are legible and complete
-- [ ] Total cost within budget
+- [ ] All narration generated with Edge TTS (`zh-CN-YunyangNeural`) — verify voice ID consistency
+- [ ] Each section has a matching `.srt` subtitle file from `--write-subtitles`
+- [ ] Approved TTS sample uses the same --rate/--pitch parameters as the batch
+- [ ] Edge TTS SSML phoneme overrides applied for mispronounced technical terms (if needed)
+- [ ] Background images are 1080×1920 portrait (9:16), no text/people/urban elements
+- [ ] Background images vary in biome/scenery type between adjacent scenes
+- [ ] If video background used: file is portrait 1080×1920, audio is muted in render
+- [ ] Total cost is $0.00 — verify no paid API calls were made
 
 ### Step 8: Self-Evaluate
 
@@ -227,11 +347,10 @@ Score (1-5):
 
 | Criterion | Question |
 |-----------|----------|
-| **Completeness** | Does every scene have all required assets? |
-| **Audio quality** | Does narration sound natural with correct pacing? |
-| **Visual consistency** | Do all images look like they belong to the same video? |
-| **Budget adherence** | Is total cost within the approved budget? |
-| **Playbook fidelity** | Do assets match the playbook's style guide? |
+| **Completeness** | Does every scene have a background image (or is video background ready)? |
+| **Audio quality** | Does Edge TTS narration sound natural with correct pace/rate/pitch? |
+| **Background quality** | Are backgrounds portrait 1080×1920, no text/people/urban, varied biomes? |
+| **Budget adherence** | Is total cost $0.00? No paid APIs used? |
 
 If any dimension scores below 3, fix before proceeding.
 
@@ -239,43 +358,15 @@ If any dimension scores below 3, fix before proceeding.
 
 Validate the asset_manifest against the schema and persist via checkpoint.
 
-### Mid-Production Fact Verification
-
-If you encounter uncertainty during asset generation:
-- Use `web_search` to verify visual accuracy of subjects (e.g. what does this building actually look like?)
-- Use `web_search` to find reference images before generating illustrations
-- Log verification in the decision log: `category="visual_accuracy_check"`
-
-Visual accuracy matters. If the script mentions a specific place, person, or object,
-verify what it actually looks like before generating images. Don't rely on
-the AI model's training data — it may be wrong or outdated.
-
 ## Common Pitfalls
 
-- **Generating before checking budget**: Always estimate total cost first. A 60-second video with 15 images can burn $3+ quickly.
-- **Inconsistent image style**: Each image_selector call is independent. Use consistent anchors, but adapt them per scene. If you paste the same style prefix into every prompt, the video will feel machine-made and repetitive.
+- **Background images with people or text**: Choose stock photos without people, text, or buildings — they distract from narration.
 - **Ignoring narration timing**: If TTS produces 12s of audio for a 10s section, the edit phase will struggle. Check durations.
-- **Ignoring delivery cues**: Generating raw script text when `provider_text` or `delivery_cues` exist will flatten the read. Apply the voice-performance contract first.
-- **Missing pronunciation guide**: "PostgreSQL" or "Kubernetes" will be mispronounced without explicit guidance.
-- **One retry then give up**: If an image doesn't match, refine the prompt specifically — don't just retry the same prompt.
-- **AI-generating images with exact text (CTA, business names, contact info)**: AI image models frequently hallucinate wrong text — wrong business name, wrong phone number, misspelled words. **Never use AI image generation for scenes where text must be verbatim.** Use Remotion `text_card` type instead. This applies to: CTA screens, title cards with business names, contact info overlays, legal disclaimers. If a scene's `type` is `text_card` in the scene plan, do NOT generate an image for it — skip it and let the compose stage render it natively in Remotion.
-
-
-## When You Do Not Know How
-
-If you encounter a generation technique, provider behavior, or prompting pattern you are unsure about:
-
-1. **Search the web** for current best practices — models and APIs change frequently, and the agent's training data may be stale
-2. **Check `.agents/skills/`** for existing Layer 3 knowledge (provider-specific prompting guides, API patterns)
-3. **If neither helps**, write a project-scoped skill at `projects/<project-name>/skills/<name>.md` documenting what you learned
-4. **Reference source URLs** in the skill so the knowledge is traceable
-5. **Log it** in the decision log: `category: "capability_extension"`, `subject: "learned technique: <name>"`
-
-This is especially important for:
-- **Video generation prompting** — models respond to specific vocabularies that change with each version
-- **Image model parameters** — optimal settings for FLUX, GPT Image, Imagen differ and evolve
-- **Audio provider quirks** — voice cloning, music generation, and TTS each have model-specific best practices
-- **Remotion component patterns** — new composition techniques emerge as the framework evolves
+- **Missing pronunciation guide**: Technical terms will be mispronounced without explicit guidance. Add Edge TTS SSML if needed.
+- **Inconsistent background orientation**: All background images MUST be portrait 1080×1920. Do not mix orientations.
+- **Background video with audio**: If using a video background, note in manifest that audio must be muted during compose.
+- **No music fallback**: If no free stock music is found, record `"music_status": "unavailable"` and proceed without music.
+- **Adding complexity**: This pipeline does NOT use diagrams, charts, or AI-generated images. Stock photos only.
 
 Do not rely on stale knowledge. When in doubt, search first.
 
@@ -283,7 +374,6 @@ Do not rely on stale knowledge. When in doubt, search first.
 
 ## Gate Reminder (Binding)
 
-This stage gates on human approval (`human_approval_default: true`). After review passes:
-checkpoint with `status="awaiting_human"`, present the summary (the Backlot board renders
-the artifact), and **END YOUR TURN**. Do not start the next stage in the same response.
-Approval is per-gate — an earlier "go ahead" does not cover this gate.
+This stage gates on human approval (`human_approval_default: true` in the pipeline YAML). After review passes:
+checkpoint with `status="awaiting_human"`, present the summary, and **END YOUR TURN**.
+Do not start the next stage in the same response. Approval is per-gate — an earlier "go ahead" does not cover this gate.

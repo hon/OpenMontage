@@ -1,24 +1,14 @@
-name: trading-animated-explainer
+name: explainer-templates
 version: "1.0"
 description: >
-  交易/金融教育竖屏口播视频管线。用户提供文案 → AI 格式化为视频脚本方案 → 用户确认 →
-  scene_plan → assets → edit → compose → publish。固定模板：背景图片/视频 + 逐句文字淡入。
-  无 AI 脚本生成，无复杂动画。
-category: custom
-stability: production
+  解说类视频管线，支持多种视觉模板。用户提供文案 → AI 格式化为视频脚本方案 → 用户确认 →
+  按所选模板生成 scene_plan → assets → edit → compose → publish。
+  模板定义场景类型、布局骨架、动效方式；风格板（playbook）独立控制颜色/字体/视觉语言。
+
+category: generated
+stability: experimental
 
 default_checkpoint_policy: guided
-
-# Reference video input support
-reference_input:
-  supported: true
-  analysis_depth: standard
-  analysis_tools:
-    - video_analyzer
-    - transcript_fetcher
-    - video_downloader
-    - scene_detect
-    - frame_sampler
 
 extensions:
   custom_scripts: true
@@ -27,19 +17,19 @@ extensions:
   custom_tools: false
 
 required_skills:
-  - pipelines/trading-animated-explainer/executive-producer
-  - pipelines/trading-animated-explainer/script-director
-  - pipelines/trading-animated-explainer/scene-director
-  - pipelines/trading-animated-explainer/asset-director
-  - pipelines/trading-animated-explainer/edit-director
-  - pipelines/trading-animated-explainer/compose-director
-  - pipelines/trading-animated-explainer/publish-director
+  - pipelines/explainer-templates/executive-producer
+  - pipelines/explainer-templates/script-director
+  - pipelines/explainer-templates/scene-director
+  - pipelines/explainer-templates/asset-director
+  - pipelines/explainer-templates/edit-director
+  - pipelines/explainer-templates/compose-director
+  - pipelines/explainer-templates/publish-director
   - meta/reviewer
   - meta/checkpoint-protocol
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/trading-animated-explainer/executive-producer
+  skill: pipelines/explainer-templates/executive-producer
   budget_default_usd: 0.00
   max_revisions_per_stage: 3
   max_send_backs: 3
@@ -48,20 +38,32 @@ orchestration:
 compatible_playbooks:
   recommended:
     - clean-professional
-    - flat-motion-graphics
-  also_works:
-    - minimalist-diagram
   custom_allowed: true
 
-stages:
-  # ── Pre-Production ──────────────────────────────────────────────
+# ── Template Registry ─────────────────────────────────────────────
+# Each template defines:
+#   scene_types.allowed   — what scene types scene-director may generate
+#   composition           — viewport, runtime (hyperframes / remotion)
+#   motion                — animation type and parameters
+#   assets                — image source, narration provider
+#   files                 — skeleton HTML + CSS to load
+#
+# Add new templates by creating a directory under templates/<name>/
+# and registering it here.
 
-  # User provides copy → script-director formats into table → user confirms
-  # This is the entry point. No research or proposal needed.
+templates:
+  minimal:
+    description: "GSAP 驱动竖屏解说模板 — 独立背景层 (Ken Burns 交替缩放入/出) + 居中文字滑入/淡出 + 关键词高亮 + BGM ducking。对齐 trading-psychology 旧项目动效质量。"
+    version: "2.0"
+    file: templates/minimal/template.yaml
+
+stages:
+  # ── Pre-production ─────────────────────────────────────────────
 
   - name: script
-    skill: pipelines/trading-animated-explainer/script-director
+    skill: pipelines/explainer-templates/script-director
     required_artifacts_in: []
+    optional_artifacts_in: []
     produces:
       - script
     tools_available: []
@@ -71,20 +73,20 @@ stages:
       - All user-provided copy is preserved verbatim (no AI rewrites)
       - Section boundaries follow natural narrative breaks
       - Timing is proportional to section text length (~2.5-3 chars/sec for Chinese)
-      - Each 画面构思 fits simple template mode (natural scenery + text overlay, no animation)
+      - Visual concepts fit the selected template's scene types
       - Visual mood shifts match copy tone changes
     success_criteria:
       - User confirmed script table (confirmation_status: "confirmed")
       - All sections have label, text, timing, and visual_concept
       - Total duration covers full copy without omission
-    optional_artifacts_in: [proposal_packet]
+
+  # ── Production ──────────────────────────────────────────────────
 
   - name: scene_plan
-    skill: pipelines/trading-animated-explainer/scene-director
+    skill: pipelines/explainer-templates/scene-director
     required_artifacts_in:
       - script
-    optional_artifacts_in:
-      - proposal_packet
+    optional_artifacts_in: []
     produces:
       - scene_plan
     tools_available: []
@@ -92,20 +94,19 @@ stages:
     human_approval_default: true
     review_focus:
       - Full script duration covered with no gaps
-      - Each scene has a mood-appropriate background image (or video)
-      - No two consecutive scenes use the same scenery biome
-      - Asset feasibility - background images source from stock photo APIs
+      - Only scene types allowed by the selected template are used
+      - Each scene has a mood-appropriate background (image or video)
+      - Asset search queries are concrete and match the visual mood
     success_criteria:
       - Schema-valid scene_plan with required_assets per scene
-      - All scenes are type background_image (or background_video)
+      - All scene types are in template's allowed list
 
   - name: assets
-    skill: pipelines/trading-animated-explainer/asset-director
+    skill: pipelines/explainer-templates/asset-director
     required_artifacts_in:
       - scene_plan
       - script
-    optional_artifacts_in:
-      - proposal_packet
+    optional_artifacts_in: []
     produces:
       - asset_manifest
     required_tools:
@@ -113,32 +114,25 @@ stages:
       - image_selector
     optional_tools:
       - video_selector
-      - math_animate
-      - diagram_gen
-      - code_snippet
       - music_gen
     tools_available:
       - tts_selector
       - image_selector
       - video_selector
-      - diagram_gen
-      - code_snippet
       - music_gen
-      - math_animate
     checkpoint_required: true
     human_approval_default: true
     review_focus:
       - All asset files exist on disk
       - Narration covers all script sections
-      - Narration assets apply the approved voice performance plan and sample settings
-      - Total cost within approved budget from proposal_packet
-      - Image style consistency across all generated visuals
+      - Images sourced from stock photo APIs (zero cost) unless template specifies otherwise
+      - Total cost within budget (default $0)
     success_criteria:
       - Schema-valid asset_manifest with all required assets generated
       - All file paths resolve to existing files
 
   - name: edit
-    skill: pipelines/trading-animated-explainer/edit-director
+    skill: pipelines/explainer-templates/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -151,15 +145,14 @@ stages:
     human_approval_default: false
     review_focus:
       - All cuts reference valid assets from manifest
-      - Subtitles enabled with playbook-compatible styling
-      - Music configured with ducking parameters
+      - Subtitles enabled
       - No timeline gaps or overlaps
     success_criteria:
       - Schema-valid edit_decisions
       - Full video duration covered
 
   - name: compose
-    skill: pipelines/trading-animated-explainer/compose-director
+    skill: pipelines/explainer-templates/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -169,33 +162,29 @@ stages:
       - render_report
       - final_review
     required_tools:
-      - video_compose
-      - audio_mixer
-    optional_tools:
-      - video_stitch
-    tools_available:
-      - video_compose
       - hyperframes_compose
-      - video_stitch
+      - audio_mixer
+    tools_available:
+      - hyperframes_compose
       - audio_mixer
     checkpoint_required: true
     human_approval_default: false
     review_focus:
       - Output video exists and is playable
-      - "Duration within +/-5% of target"
+      - Duration within ±5% of target
       - Audio is clear with proper narration/music balance
-      - "`hyperframes lint` and `hyperframes validate` must pass before render"
+      - Template skeleton structure preserved in output
+      - `hyperframes lint` and `hyperframes validate` pass before render
     success_criteria:
       - Schema-valid render_report with output paths
       - Output file exists and passes ffprobe validation
 
   - name: publish
-    skill: pipelines/trading-animated-explainer/publish-director
+    skill: pipelines/explainer-templates/publish-director
     required_artifacts_in:
       - render_report
       - final_review
-    optional_artifacts_in:
-      - proposal_packet
+    optional_artifacts_in: []
     produces:
       - publish_log
     tools_available: [export_bundle]

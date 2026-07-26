@@ -1,0 +1,94 @@
+name: minimal
+version: "2.0"
+description: >
+  GSAP 驱动的竖屏解说模板。独立背景图片层（Ken Burns 缩放入/出交替）+ 居中文字滑入/淡出 +
+  关键词高亮 + 可选 BGM ducking + SRT 字幕导出。
+  对齐 "2026-07-24-trading-psychology" 旧项目的动效质量。
+
+scene_types:
+  allowed:
+    - background_image
+  default: background_image
+
+composition:
+  viewport: "1080x1920"
+  orientation: portrait
+  runtime: hyperframes
+
+assets:
+  image_source: pexels         # pexels | pixabay | unsplash
+  image_search_style: cinematic # style hint for image search queries
+  narration_provider: edge_tts  # edge_tts | elevenlabs | google_tts
+  narration_voice: zh-CN-XiaoxiaoNeural  # TTS voice ID, parameterizable
+  allow_video_background: false
+
+motion:
+  type: gsap                   # gsap (was css_fade in v1)
+  animation_library: gsap      # GSAP loaded from CDN
+  gsap:
+    cdn: "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"
+
+    # Ken Burns background zoom
+    ken_burns:
+      enabled: true
+      zoom_max: 1.15            # max scale for zoom-in
+      zoom_duration_mode: "auto" # "auto" = scene duration, or fixed seconds
+      zoom_alternate: true       # alternate zoom-in (odd) / zoom-out (even)
+      crossfade_duration: 0.5    # bg crossfade duration in seconds
+
+    # Text clip animation
+    text:
+      entry:
+        type: "slide+fade"       # slide+fade | fade | slide
+        y_offset: -30            # slide from above (px)
+        opacity_from: 0
+        opacity_to: 1
+        duration: 0.3
+        ease: "power2.out"
+      exit:
+        opacity_to: 0
+        duration: 0.5
+        ease: "power2.in"
+      scene:
+        fade_in_duration: 0.5
+        fade_in_ease: "power2.out"
+
+    # Overlay
+    overlay:
+      color: "rgba(0, 0, 0, 0.35)"
+      fade_duration: 0.5
+      fade_ease: "power2.in"
+
+subtitles:
+  enabled: true
+  format: srt                   # SRT subtitle export
+
+audio:
+  bgm:
+    enabled: true
+    volume: 0.3                 # BGM playback volume (0.0-1.0)
+    ducking:
+      enabled: true
+      reduce_to: 0.1            # BGM volume during narration
+      fade_duration: 0.5        # duck/fade duration
+  narration:
+    volume: 1.0
+
+style:
+  font_family: "'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+  font_weight: 700
+  font_size: 56px               # base font size for scene-inner text
+  text_align: center
+  text_color: "#FFFFFF"
+  text_shadow: "0 2px 12px rgba(0, 0, 0, 0.6)"
+  highlight_color: "#FFD93D"
+  highlight_weight: 900
+  overlay_opacity: 0.35
+
+scene_splitting:
+  max_seconds_per_scene: 12     # scene-director splits longer script sections
+  min_seconds_per_scene: 1.5    # minimum scene duration
+
+files:
+  skeleton: templates/minimal/skeleton.html
+  style: templates/minimal/style.css

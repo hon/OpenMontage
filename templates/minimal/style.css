@@ -1,0 +1,133 @@
+/* ── Minimal template v2: GSAP-driven background + text clips ── */
+/* Matches the CSS in templates/minimal/skeleton.html              */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+@font-face { font-family: 'PingFang SC'; src: local('PingFang SC'); }
+@font-face { font-family: 'Microsoft YaHei'; src: local('Microsoft YaHei'); }
+
+html, body {
+  width: 1080px;
+  height: 1920px;
+  overflow: hidden;
+  background: #000;
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+#root {
+  position: relative;
+  width: 1080px;
+  height: 1920px;
+  overflow: hidden;
+  background: #000;
+}
+
+/* ── Background layer: crossfading images with Ken Burns zoom ── */
+#bg-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.bg-img-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  will-change: transform, opacity;
+  transform-origin: center center;
+}
+
+/* ── Text clips: fill viewport, GSAP controls visibility ── */
+.clip.text-clip {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Dark overlay behind text */
+.clip.text-clip .overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1;
+}
+
+/* Text container — centered with padding */
+.clip.text-clip .scene-inner {
+  position: relative;
+  z-index: 2;
+  max-width: 900px;
+  padding: 60px 80px;
+  text-align: center;
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #FFFFFF;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+/* Per-sentence: hidden by default, GSAP animates visibility */
+.clip.text-clip .scene-inner .sentence {
+  opacity: 0;
+  will-change: opacity, transform;
+}
+
+/* Highlighted keywords */
+.clip.text-clip .scene-inner .highlight {
+  color: #FFD93D;
+  font-weight: 900;
+}
+
+/* ── Title clip: large center title + English subtitle ── */
+.clip.title-clip {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  opacity: 0;                   /* hidden by default, GSAP fades in */
+}
+
+.clip.title-clip .title-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.30) 100%);
+  z-index: 1;
+}
+
+.clip.title-clip .title-content {
+  position: relative;
+  z-index: 2;
+  max-width: 920px;
+  text-align: center;
+  padding: 60px 80px;
+}
+
+.clip.title-clip .title-main {
+  font-size: 88px;
+  font-weight: 900;
+  color: #FFFFFF;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+  line-height: 1.3;
+  letter-spacing: 4px;
+}
+
+.clip.title-clip .title-sub {
+  font-size: 36px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  letter-spacing: 2px;
+  margin-top: 28px;
+}
+
+/* ── Audio (hidden) ── */
+audio { display: none; }

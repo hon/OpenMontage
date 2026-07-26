@@ -400,7 +400,7 @@ The EP doesn't replace any director skill — it wraps them. Each director skill
 
 [EP] === STAGE 7: compose ===
 [EP] Spawning compose-director with edit_decisions + asset_manifest...
-[EP] Output probe: 88.7s (target 90s, within 5%). Resolution: 1920x1080. Audio: stereo. ✓
+[EP] Output probe: 88.7s (target 90s, within 5%). Resolution: 1080x1920 (9:16 portrait). Audio: stereo. ✓
 [EP] G7 PASS
 
 [EP] === STAGE 8: publish ===

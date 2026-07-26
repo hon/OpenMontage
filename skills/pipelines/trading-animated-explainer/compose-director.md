@@ -1,22 +1,40 @@
-# Compose Director — Explainer Pipeline
+# Compose Director — Trading Explainer Pipeline
+
+## Customizations from base `animated-explainer/compose-director.md`
+
+This file is forked from `skills/pipelines/animated-explainer/compose-director.md`.
+Changes made for the `trading-animated-explainer` pipeline:
+- **Runtime locked to HyperFrames** — all Remotion-specific steps removed; only HyperFrames path remains
+- **Edge TTS narration assumed** — audio comes from Edge TTS, subtitles from `--write-subtitles` SRT output
+- **sync-timings.py mandatory** — post-render ASR-driven timing correction patches `index.html` data-start/data-duration
+- **No CaptionOverlay, no WhisperX** — subtitles generated via Edge TTS SRT, sync-corrected by sync-timings.py
+- **Chinese-first** — narration is zh-CN; all subtitle handling assumes Chinese text
+- **Zero cost** — all assets are free (stock photos, free music, Edge TTS); render is local HyperFrames
+- **Portrait 9:16 (mobile竖屏)** — viewport 1080×1920 instead of 1920×1080; background images sourced as portrait; only portrait media profiles used
+- **Simple template mode (no animations)** — no GSAP kinetic typography, no chart animations, no Ken Burns. Output is a fixed-layout template: background image/video fills screen, one sentence fades in at a time. Only background and text change between runs.
 
 ## When to Use
 
-You are the Compositor for a generated explainer video. You have `edit_decisions` with the complete edit timeline and an `asset_manifest` with all file paths. Your job is to render the final video: assemble visuals, layer audio, burn subtitles, and encode to the target format.
+You are the Compositor for a generated trading explainer video. You have `edit_decisions` with the complete edit timeline and an `asset_manifest` with all file paths. Your job is to render the final video: build the HyperFrames composition, run sync-timings.py for audio-text sync, and encode to the target format.
 
 This is the last technical stage before the video exists as a playable file. Everything converges here.
 
-## Runtime Routing (MANDATORY first step)
+## Runtime (locked — `render_runtime: hyperframes`)
 
-Read `edit_decisions.render_runtime` before anything else. It was locked at proposal and must not be changed silently. The rest of this skill's process steps (Remotion public/ staging, word-level caption burn, etc.) assume `render_runtime="remotion"` — the default for data-driven explainers.
+This pipeline ALWAYS renders via HyperFrames. Do NOT check `edit_decisions.render_runtime` for branching — it is always `"hyperframes"`.
 
-- **`render_runtime="hyperframes"`** — HTML/CSS/GSAP render. Do NOT follow the Remotion-specific steps below. Instead: read `skills/core/hyperframes.md`, `.agents/skills/hyperframes/SKILL.md`, and `.agents/skills/hyperframes-cli/SKILL.md`. Call `video_compose` with the edit_decisions unchanged — it will delegate to `hyperframes_compose`, which materializes a workspace under `projects/<name>/hyperframes/`, runs `lint → validate → render`, and returns the MP4. Both lint AND validate must pass before render; contrast can be deferred during iteration but not for final delivery.
-- **`render_runtime="ffmpeg"`** — simple concat/trim. Call `video_compose` directly; it will NOT auto-upgrade to Remotion when this runtime is explicitly locked.
-- **Runtime unavailable** — surface the blocker per AGENT_GUIDE.md > "Escalate Blockers Explicitly" and get user approval (recorded as a `render_runtime_selection` decision in decision_log) before switching.
+1. Call `hyperframes_compose` (via `video_compose` or directly) with the `edit_decisions` and `asset_manifest`
+2. Read the HyperFrames skills for detailed workflow:
+   - `.agents/skills/hyperframes/SKILL.md` — entry point, composition contract
+   - `.agents/skills/hyperframes-core/SKILL.md` — HTML structure, data-start/data-duration, tracks
+   - `.agents/skills/hyperframes-cli/SKILL.md` — CLI dev loop: init, lint, validate, render
+   - `.agents/skills/hyperframes-media/SKILL.md` — audio handling, transcription, caption authoring
+   
+   **Note**: HyperFrames animation skills (hyperframes-animation) are NOT needed. This pipeline uses simple CSS fades only — no GSAP timelines or scene transitions.
+3. Run `hyperframes lint && hyperframes validate` before render — both must pass before final delivery
+4. After render, run `sync-timings.py` (see Step 5) to correct all timing from ASR transcription
 
-`final_review.checks.promise_preservation.render_runtime_used` must equal the runtime that actually ran; `runtime_swap_detected` must be `false` unless an approved decision authorizes the swap.
-
-**Pass `proposal_packet` to `video_compose.execute()`** so in-tool swap detection can actually fire. Without it the `runtime_swap_check` is reported as `skipped` and you have to rely on the reviewer skill's cross-artifact comparison instead.
+`final_review.checks.promise_preservation.render_runtime_used` must be `"hyperframes"` and `runtime_swap_detected` must be `false`.
 
 ## Prerequisites
 
@@ -28,270 +46,303 @@ Read `edit_decisions.render_runtime` before anything else. It was locked at prop
 | Tools | `video_compose`, `audio_mixer` | Rendering capabilities |
 | Media profiles | `lib/media_profiles.py` | Output format specs (resolution, codec, bitrate) |
 
+## Prerequisites
+
+| Layer | Resource | Purpose |
+|-------|----------|---------|
+| Schema | `schemas/artifacts/render_report.schema.json` | Artifact validation |
+| Prior artifacts | `state.artifacts["edit"]["edit_decisions"]`, `state.artifacts["assets"]["asset_manifest"]` | What to render |
+| Playbook | Active style playbook | Quality targets |
+| Tools | `hyperframes_compose` (or `video_compose` HyperFrames mode), `sync-timings.py` | Rendering + timing correction |
+| Media profiles | `lib/media_profiles.py` | Output format specs (resolution, codec, bitrate) |
+
 ## Process
 
-### Step 1: Choose Render Strategy
+### Step 1: Verify Assets
 
-Based on the edit decisions, pick the rendering approach:
+All narration, music, and image assets were generated in the asset stage. Before rendering:
 
-**Remotion render** (DEFAULT — use this unless explicitly overridden):
-- Animated text cards, stat cards, chart scenes
-- Complex transitions (morph, zoom, ken-burns)
-- Programmatic motion graphics
-- Audio embedding (narration + music with fade/volume)
-- Word-level captions via CaptionOverlay component
-- Best for: ALL explainer videos, both image-based and animation-heavy
-
-**FFmpeg pipeline** (FALLBACK — only when Remotion is unavailable):
-- Static images with Ken Burns
-- Audio layering
-- SRT subtitle burn-in
-- Best for: environments without Node.js/Remotion installed
-
-**IMPORTANT: When using Remotion, ALL of these go through Remotion — not FFmpeg:**
-- Audio (narration + music) → Remotion `audio` prop, NOT external audio_mixer
-- Subtitles → Remotion `captions` prop (word-level), NOT SRT burn via FFmpeg
-- Text overlays (CTA, titles) → Remotion `text_card` cut type, NOT AI-generated images
-
-### Step 2: Audio Acquisition (Narration, Music, Subtitles)
-
-Before rendering, present the user with audio options and get their preferences.
-
-**Present to the user:**
-
-> **Audio setup for this video:**
->
-> **Narration:** I can generate TTS narration using OpenAI TTS (`gpt-4o-mini-tts` — $0.015/min, 6 voices, voice direction). Which voice and tone would you like? I'll propose a voice based on the video topic, or you can choose:
-> - `onyx` — deep, authoritative (documentaries, tech)
-> - `echo` — resonant, futuristic (product ads, sci-fi)
-> - `nova` — bright, energetic (upbeat, explainers)
-> - `fable` — warm, storytelling (narratives, education)
-> - `shimmer` — expressive, warm (organic, lifestyle)
-> - `alloy` — neutral, balanced (general purpose)
->
-> **Music:** I can automatically find royalty-free background music from Pixabay (no key needed). If you have a `FREESOUND_API_KEY`, I can also search Freesound as a backup.
->
-> **Subtitles:** I'll generate word-level subtitles using WhisperX transcription of the final narration, burned into the video via Remotion captions.
->
-> Want me to proceed with my recommendations, or adjust anything?
-
-**After user confirms:**
-
-1. **Write narration script with duration budget** (see scene-director Step 4b):
-   - Calculate video duration from cuts
-   - Budget at 85-90% of video duration
-   - Use 2.0-2.5 words/sec for documentary, 2.5-3.0 for energetic
-   - Verify word count before generating TTS
-
-2. **Generate TTS narration:**
-   ```python
-   from tools.audio.openai_tts import OpenAITTS
-   result = OpenAITTS().execute({
-       'text': narration_script,
-       'voice': '<user-chosen or agent-recommended>',
-       'instructions': '<voice direction matching video tone>',
-       'output_path': 'path/to/narration.mp3',
-   })
-   # CRITICAL: Check result.data['audio_duration_seconds'] vs video duration
-   # If narration exceeds video by >1s: shorten script and regenerate
+1. **Verify narration exists:** Check `projects/<project>/assets/audio/narration.mp3` and per-section files exist
+2. **Verify SRT subtitles exist:** Edge TTS generated `.srt` files alongside each narration section (via `--write-subtitles`). Check they all exist.
+3. **Concatenate per-section SRTs** into a master subtitle file:
+   ```bash
+   # Adjust timestamps sequentially and merge
+   python scripts/merge_srt.py projects/<project>/assets/narration/*.srt > projects/<project>/assets/subtitles/master.srt
    ```
+4. **Verify background music:** Check `projects/<project>/assets/music/background_music.mp3` exists
+5. **Verify all image/diagram assets** from the manifest exist on disk
 
-3. **Download background music:**
-   ```python
-   from tools.audio.pixabay_music import PixabayMusic
-   result = PixabayMusic().execute({
-       'query': '<mood/genre matching video topic>',
-       'min_duration': video_duration_seconds,
-       'max_duration': 300,
-       'output_path': 'path/to/music.mp3',
-   })
+6. **Probe durations:**
+   ```bash
+   ffprobe -v error -show_entries format=duration -of csv=p=0 projects/<project>/assets/audio/narration.mp3
+   ffprobe -v error -show_entries format=duration -of csv=p=0 projects/<project>/assets/music/background_music.mp3
    ```
+   - Narration ±15% of target video duration
+   - Music ≥ video duration (will be looped if needed)
 
-4. **Generate subtitles via WhisperX:**
-   ```python
-   from tools.analysis.transcriber import Transcriber
-   result = Transcriber().execute({
-       'input_path': 'path/to/narration.mp3',
-       'model_size': 'base',
-       'language': 'en',
-   })
-   # Convert word_timestamps to Remotion caption format:
-   # [{ "word": "Hello", "startMs": 0, "endMs": 340 }, ...]
-   ```
-
-5. **Assemble composition JSON** with audio config:
-   ```json
-   {
-     "audio": {
-       "narration": { "src": "path/to/narration.mp3", "volume": 1 },
-       "music": { "src": "path/to/music.mp3", "volume": 0.1, "fadeInSeconds": 2, "fadeOutSeconds": 3 }
-     },
-     "captions": [ ... word-level captions from WhisperX ... ]
-   }
-   ```
-
-### Step 3: Prepare Render Inputs
-
-For each cut in the edit decisions:
-1. Verify the source asset exists at its declared path
-2. Check asset dimensions/duration match expectations
-3. Prepare transform parameters (scale, position, crop)
-
-For audio:
-1. Verify narration duration fits within video duration (use `audio_probe`)
-2. Verify music duration covers video duration
-3. Prepare ducking parameters from edit decisions
-
-### Step 3: Determine Output Profile
+### Step 2: Determine Output Profile
 
 Read the target platform from the brief artifact. Map to a media profile:
 
 | Platform | Profile | Resolution | Notes |
 |----------|---------|-----------|-------|
-| YouTube | `youtube_landscape` | 1920x1080 | Default for most explainers |
-| TikTok/Reels | `tiktok` | 1080x1920 | Vertical, needs reframing |
-| Twitter/X | `twitter_landscape` | 1280x720 | Shorter format |
-| LinkedIn | `linkedin` | 1920x1080 | Professional context |
+| **Mobile Portrait (locked)** | `tiktok` | **1080×1920 (9:16)** | All scenes rendered in portrait; reframing not needed |
+| TikTok/Reels | `tiktok` | 1080×1920 | Vertical output |
+| YouTube Shorts | `youtube_shorts` | 1080×1920 | Vertical output |
 
 Get the exact encoding parameters via `ffmpeg_output_args(get_profile(name))`.
 
-### Step 4: Render Video
+### Step 3: Build HyperFrames Composition (Simple Template Mode)
 
-Call the `video_compose` tool with:
-```
-{
-  "operation": "render",
-  "edit_decisions": <edit_decisions artifact>,
-  "asset_manifest": <asset_manifest artifact>,
-  "output_profile": "youtube_landscape",
-  "output_path": "renders/output.mp4",
-  "options": {
-    "subtitle_burn": true,
-    "audio_normalize": true,
-    "two_pass_encode": true
-  }
-}
-```
+This pipeline renders through **HyperFrames** with a fixed template. No complex animations — just background image/video + sentence text. The only motion is:
+- Background image crossfade between scenes (CSS transition)
+- Sentence text fade-in/fade-out (GSAP opacity only, no transforms)
 
-If using Remotion for animated segments:
-1. Generate Remotion composition data from edit decisions
-2. Call `video_compose` with `operation: "remotion_render"` for animated segments
-3. Assemble Remotion outputs with remaining segments via FFmpeg
+**DO NOT** add slide, scale, stagger, Ken Burns, count-up, chart animations, or any motion beyond simple opacity fades.
 
-**Zero-key Remotion render (component-only videos):**
-When all scenes are Remotion component types (hero_title, stat_card, bar_chart, line_chart,
-pie_chart, kpi_grid, comparison, callout, progress_bar, text_card), render the entire video
-as a single Remotion composition using the Explainer entry point. No FFmpeg assembly needed.
-The edit_decisions cuts array maps directly to Remotion props. See `skills/core/remotion.md`
-for the proven formula — especially the all-dark-background rule for visual consistency.
+**Workflow:**
 
-### Step 5: Audio Post-Processing
-
-**Remotion path (DEFAULT):** Skip external audio mixing entirely. Remotion handles all audio
-natively via `<Audio>` components. Pass audio sources in the composition props:
-```json
-{
-  "audio": {
-    "narration": { "src": "project/narration.mp3", "volume": 1.0 },
-    "music": { "src": "project/music.mp3", "volume": 0.12, "fadeInSeconds": 1.5, "fadeOutSeconds": 2.5 }
-  }
-}
-```
-Remotion renders audio and video in a single pass — no external muxing needed.
-Do NOT use `audio_mixer` for ducking/mixing when rendering via Remotion.
-
-**FFmpeg fallback (ONLY when Remotion is unavailable):**
-Call the `audio_mixer` tool to:
-1. Layer narration segments in order
-2. Mix background music at playbook volume
-3. Apply ducking (music dips during narration)
-4. Normalize overall audio levels
-5. Output the final mixed audio track
-The video_compose tool will mux this with the video.
-
-### Step 5b: Generate Subtitles (Mandatory)
-
-Subtitles are mandatory for all explainer content. Generate them from the narration audio — do NOT skip this step.
-
-**Remotion path (DEFAULT — when using Remotion render):**
-
-1. **Transcribe** the full narration using the `transcriber` tool (whisperx):
-   ```python
-   from tools.analysis.transcriber import Transcriber
-   result = Transcriber().execute({
-       'input_path': 'projects/<project>/assets/audio/narration_full.mp3',
-       'model_size': 'base',
-       'language': 'en',
-       'output_dir': 'projects/<project>/assets/audio'
-   })
-   # result.data contains segments with word-level timestamps
+1. **Create a HyperFrames project** (one per video):
+   ```bash
+   npx hyperframes init projects/<project>/hyperframes --template blank
    ```
 
-2. **Convert to Remotion WordCaption format** (NOT SRT):
-   ```python
-   captions = []
-   for segment in result.data['segments']:
-       for word_info in segment.get('words', []):
-           captions.append({
-               'word': word_info['word'],
-               'startMs': int(word_info['start'] * 1000),
-               'endMs': int(word_info['end'] * 1000),
-           })
+2. **Transform edit_decisions into index.html with fixed template structure:**
+
+   Each cut is a `<section class="clip">` with two layers:
+   - **Background layer**: full-viewport image or video filling the entire frame
+   - **Text layer**: centered sentence(s) with simple fade transitions
+
+   ```html
+   <section class="clip" id="scene-1" data-start="0" data-duration="10"
+            style="background: url('assets/images/scene-1-bg.jpg') center/cover no-repeat;">
+     <div class="overlay"></div>
+     <div class="text-container">
+       <div class="sentence">交易的核心是风险管理，而不是预测市场。</div>
+     </div>
+   </section>
    ```
 
-3. **Add captions to composition props** — they go in the `captions` array alongside `cuts` and `audio`:
-   ```json
-   {
-     "cuts": [...],
-     "audio": {...},
-     "captions": [
-       { "word": "Root", "startMs": 120, "endMs": 340 },
-       { "word": "canals", "startMs": 340, "endMs": 680 }
-     ]
+   **Background video alternative**: If a single full-duration background video was sourced (e.g., downloaded loop), use a `<video>` element instead of per-scene images:
+   ```html
+   <section class="clip" id="scene-1" data-start="0" data-duration="10">
+     <video class="bg-video" src="assets/video/background.mp4" autoplay loop muted playsinline></video>
+     <div class="overlay"></div>
+     <div class="text-container">
+       <div class="sentence">交易的核心是风险管理，而不是预测市场。</div>
+     </div>
+   </section>
+   ```
+
+3. **Scene type mapping (simplified — only two types):**
+   | Type | Implementation |
+   |---|---|
+   | `background_image` | Per-scene `<section>` with `background: url(...) center/cover no-repeat`; crossfade between scenes via CSS |
+   | `background_video` | Single `<video class="bg-video">` element behind all scenes; text overlays change per scene |
+
+   No other scene types exist in this pipeline. All scenes follow the same layout template.
+
+4. **Configure audio in index.html:**
+   ```html
+   <audio id="narration" src="assets/audio/narration.mp3" data-start="0" data-duration="60"></audio>
+   <audio id="bgm" src="assets/music/background_music.mp3" data-start="0" data-duration="120" loop></audio>
+   ```
+
+5. **Add subtitle overlay:** Embed the Edge TTS SRT as an HTML caption layer, or use HyperFrames' built-in subtitle support. See `.agents/skills/hyperframes-media/SKILL.md` for caption authoring.
+
+6. **Fixed template CSS (no GSAP needed for text transitions):**
+
+   This pipeline uses ONE fixed layout — only the background and text content change between runs.
+
+   ```css
+   /* ── BASE: full-viewport background per scene ── */
+   section.clip {
+     position: relative;
+     width: 1080px;
+     height: 1920px;
+     display: flex;
+     align-items: center;
+     justify-content: center;
+     overflow: hidden;
    }
+
+   /* ── Background video (fills entire viewport) ── */
+   .bg-video {
+     position: absolute;
+     inset: 0;
+     width: 100%;
+     height: 100%;
+     object-fit: cover;
+     z-index: 0;
+   }
+
+   /* ── Dark overlay for text readability ── */
+   .overlay {
+     position: absolute;
+     inset: 0;
+     background: rgba(0, 0, 0, 0.35);
+     z-index: 1;
+   }
+
+   /* ── Text container — centered, same position every scene ── */
+   .text-container {
+     position: relative;
+     z-index: 2;
+     max-width: 880px;
+     padding: 40px 60px;
+     text-align: center;
+   }
+
+   /* ── Individual sentence — simple fade via CSS opacity transition ── */
+   .sentence {
+     font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+     font-size: 64px;
+     font-weight: 400;
+     line-height: 1.6;
+     color: #FFFFFF;
+     text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+     opacity: 0;              /* hidden until its timer fires */
+     transition: opacity 0.5s ease;
+     position: absolute;      /* stack all sentences, show one at a time */
+     left: 60px;
+     right: 60px;
+     top: 50%;
+     transform: translateY(-50%);
+   }
+   .sentence.visible { opacity: 1; }
+
+   /* ── Highlighted keywords ── */
+   .sentence .highlight {
+     color: #FFD93D;
+     font-weight: 700;
+   }
+
+   /* ── Background crossfade between scenes ── */
+   .clip { transition: opacity 0.8s ease; }
    ```
 
-   Remotion's CaptionOverlay renders these as word-by-word highlighted captions with the theme's
-   `captionHighlightColor` and `captionBackgroundColor`. This is superior to FFmpeg SRT burn because
-   it produces animated word-level highlighting synchronized to narration.
+7. **Google Font Noto Sans SC:**
 
-**FFmpeg fallback (ONLY when Remotion is unavailable):**
-
-If Remotion is not available, fall back to SRT generation + FFmpeg burn:
-   ```python
-   from tools.subtitle.subtitle_gen import SubtitleGen
-   SubtitleGen().execute({
-       'segments': transcription_data['segments'],
-       'format': 'srt',
-       'output_path': 'projects/<project>/assets/subtitles.srt',
-       'max_words_per_cue': 8,
-       'max_chars_per_line': 42
-   })
-   # Then burn with video_compose operation='burn_subtitles'
+   Add to `<head>` before `<style>`:
+   ```html
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700;900&display=swap" rel="stylesheet">
    ```
 
-**The final deliverable MUST have subtitles** — either via Remotion captions or FFmpeg burn.
+8. **Sentence timing script (replaces GSAP timeline):**
 
-### Step 5c: Pre-Render Validation (Mandatory)
+   Instead of GSAP timelines, use a simple timer-based script that toggles `.visible` class:
 
-**Always run the composition validator before rendering.** This catches problems that waste render time.
+   ```javascript
+   // Run when HyperFrames timeline reaches each scene
+   const sentences = document.querySelectorAll('#scene-1 .sentence');
+   let idx = 0;
+   const showNext = () => {
+     if (idx > 0) sentences[idx - 1].classList.remove('visible');
+     if (idx < sentences.length) {
+       sentences[idx].classList.add('visible');
+       idx++;
+       setTimeout(showNext, 3000); // per-sentence display duration from sync-timings
+     }
+   };
+   showNext();
+   ```
 
-```python
-from tools.analysis.composition_validator import CompositionValidator
-result = CompositionValidator().execute({
-    'composition_path': 'path/to/composition.json',
-    'assets_root': 'remotion-composer/public',
-})
-# result.data['valid'] MUST be True before proceeding to render
-# If False: fix the reported errors first (missing assets, audio-video mismatch, etc.)
+   **Important**: `sync-timings.py` (Step 5) will correct `data-start`/`data-duration` per scene AND per-sentence timing after ASR transcription. The initial estimate is a placeholder.
+
+9. **Sentence text merging from script sections:**
+
+   Determine sentence boundaries by splitting each scene's narration text on Chinese punctuation（。？！）:
+   - One `.sentence` div per punctuation-delimited segment
+   - Scene may have 1-4 sentences depending on narration pacing
+   - If background video mode: sentences belonging to different original scenes still appear in sequence over the same video background
+
+10. **Background image/video naming convention:**
+
+    - Per-scene images: `scene-<id>-bg.jpg` in assets directory
+    - Single video: `assets/video/background.mp4`
+    - If a scene lacks a dedicated background image, use shared `bg-default.jpg`
+
+### Step 4: Validate and Render
+
+1. **Run validation:**
+   ```bash
+   npx hyperframes lint projects/<project>/hyperframes
+   npx hyperframes validate projects/<project>/hyperframes
+   ```
+   Both must pass with zero errors before rendering. If validation fails, fix the issues and re-validate. Common issues: missing asset files, incorrect data-duration.
+
+2. **Render:**
+   ```bash
+   npx hyperframes render projects/<project>/hyperframes --output projects/<project>/renders/output.mp4
+   ```
+   Or use `hyperframes_compose` / `video_compose` if a tool wrapper is available.
+
+3. **Verify the render produced output:**
+   ```bash
+   ls -la projects/<project>/renders/output.mp4
+   ffprobe -v quiet -print_format json -show_format -show_streams projects/<project>/renders/output.mp4
+   ```
+   - Video stream present
+   - Audio stream present
+   - Duration reasonable
+### Step 5: Run sync-timings.py (Mandatory)
+
+After the HyperFrames render, sync-timings.py corrects all scene timing using ASR transcription.
+
+> **Critical — correct sync order**: The subtitle timing must be **derived from the actual narration audio**, not estimated from the script. The correct order:
+> 1. Render the composition with placeholder timing (from script estimates)
+> 2. **Run sync-timings.py** which transcribes the actual narration audio via `mlx_whisper`
+> 3. Match transcript segments to scene text content
+> 4. Patch `data-start` / `data-duration` / per-sentence timing to match real audio
+> 5. **Re-render** with corrected timing
+>
+> This is why sync-timings.py runs AFTER the first render, not before. The real timing can only come from the audio that was actually generated.
+>
+> Common mistake: AI tries to calculate sentence display duration from character count or script timing. **Don't.** The ASR transcription tells you exactly when each word was spoken — use that.
+
+**What it does:**
+1. Transcribes the narration audio using `mlx_whisper` (Apple Silicon, word-level timestamps)
+2. Parses each `<section class="clip">` in the HyperFrames `index.html`
+3. Matches scene text content to ASR segments via fuzzy character-set Jaccard similarity
+4. Computes corrected `data-start` and `data-duration` values
+5. Patches `index.html` in-place with corrected timings
+
+**Run it:**
+```bash
+python scripts/sync-timings.py projects/<project>/hyperframes
 ```
 
-Common catches:
-- Narration audio longer than video (would be cut off)
-- Missing image/audio files (render would fail)
-- Music shorter than video (silence at end)
+Or for a single project from the workspace root:
+```bash
+python scripts/sync-timings.py projects/<project_path>
+```
 
-**Do not skip this step.** If validation fails, fix the issue and re-validate before rendering.
+**Command options:**
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Preview changes without modifying files |
+| `--asr-json PATH` | Use pre-computed ASR JSON (skip re-transcription, for iteration) |
+| `--narration PATH` | Custom narration path (default: `assets/audio/narration.mp3`) |
+| `--html PATH` | Custom HTML path (default: `index.html`) |
+
+**Expected output:**
+- A timing correction report showing old → new start/duration values per scene
+- Confidence score per scene (character-set Jaccard overlap with ASR)
+- Low-confidence matches (< 30%) are flagged for manual review
+- `index.html` is patched in-place with corrected `data-start` and `data-duration` values
+- Audio element `data-duration` values are also corrected from ffprobe probe
+
+**Quality gate — review the report:**
+- Check for any scene with `< 30%` confidence — these need manual timing review
+- Verify total duration shift is reasonable (large shifts indicate a matching failure)
+- If critical scenes have low confidence, re-run with `--dry-run`, inspect, then manually correct
+
+**Re-render if timings changed significantly:**
+```bash
+npx hyperframes render projects/<project>/hyperframes --output projects/<project>/renders/output.mp4
+```
 
 ### Step 6: Post-Render Self-Review (Mandatory — ALL steps required)
 
@@ -341,18 +392,22 @@ result = Transcriber().execute({
 ```
 
 **6d. Visual inspection — review each frame:**
-- Does the background color/gradient match intent? (watch for white backgrounds on dark-themed videos)
-- Are images rendering correctly? (not blank, not stretched)
-- Are subtitles/captions visible and properly spaced?
-- Are overlays (section titles, stat reveals) positioned correctly?
-- Is the opening scene visually strong? (important for social media thumbnails)
-- Does the CTA/closing screen show correct text? (AI-generated text in images frequently hallucinates — use Remotion text_card for any text that must be exact)
+- Does the background (image or video) fill the entire viewport without stretching or letterboxing?
+- Is the dark overlay applied? (text must be readable over bright/white backgrounds)
+- Is the text centered and positioned correctly?
+- Are highlighted keywords visibly different (color/weight)?
+- Is text shadow present and strong enough for readability?
+- Is the Google Font Noto Sans SC rendering (not falling back to system font)?
+- Do sentences fade in/out smoothly (not cutting abruptly)?
+- Is only ONE sentence visible at a time?
+- Does the CTA/closing screen show correct text?
 
 **6e. Audio inspection — check transcript against script:**
-- Is the full narration captured? (compare last transcribed word to last scripted word)
+- Is the full narration captured? (compare last transcribed Chinese character to last scripted character)
 - Any words cut off at the end? (narration exceeding video duration)
-- Timing alignment — do narration segments roughly match their intended scenes?
+- Timing alignment — do narration segments roughly match their intended scenes? Check that sentence-by-sentence text transitions align with spoken pauses
 - Is background music audible? (transcriber may not capture music, but ffprobe confirms audio stream)
+- Are highlighted keywords spoken at the moment they appear on screen? (sync-timings output should confirm this)
 
 **6f. Compile and present review to user:**
 
@@ -361,7 +416,8 @@ result = Transcriber().execute({
 > **File:** [duration]s, [resolution], [file size] — audio stream: [present/MISSING]
 > **Audio:** [Complete/Cut off at Xs] — [N]/[M] words transcribed from rendered output
 > **Visuals:** [N scenes inspected] — [issues or "all scenes rendering correctly"]
-> **Captions:** [Remotion CaptionOverlay / FFmpeg SRT / MISSING] — [word-level highlight working / issues]
+> **Captions:** [Edge TTS SRT / HyperFrames HTML overlay / MISSING] — [synced correctly / needs review]
+> **sync-timings:** [report summary — scenes corrected, total shift, low-confidence matches]
 > **Issues found:** [list any issues with severity]
 >
 > **Recommendations:** [what to fix, if anything]
@@ -398,13 +454,13 @@ result = Transcriber().execute({
       "path": "renders/output.mp4",
       "format": "mp4",
       "codec": "h264",
-      "resolution": "1920x1080",
+      "resolution": "1080x1920",
       "fps": 30,
       "duration_seconds": 62.4,
       "file_size_mb": 45.2,
       "audio_codec": "aac",
       "audio_channels": 2,
-      "render_strategy": "ffmpeg",
+      "render_strategy": "hyperframes",
       "render_time_seconds": 180
     }
   ],
@@ -439,7 +495,14 @@ Validate the render_report against the schema and persist via checkpoint.
 ## Common Pitfalls
 
 - **Missing asset files**: Always verify every referenced file exists before starting the render. A missing file mid-render wastes time.
-- **Audio sync drift**: Accumulated timing errors across narration segments cause audio-visual desync. Use absolute timestamps, not relative offsets.
+- **Adding animations (blocked)**: Do NOT add GSAP animations beyond simple opacity fades. No slide, scale, stagger, Ken Burns, count-up — this pipeline uses simple template mode by design.
+- **Audio sync drift**: Accumulated timing errors across narration segments cause audio-visual desync. sync-timings.py corrects this, but if ASR confidence is low for key scenes, manual verification is needed.
+- **sync-timings.py low confidence**: If character overlap between scene text and ASR segments is below 30%, the timing correction may be wrong. Check the report and manually adjust if needed.
 - **Subtitle encoding**: Burn subtitles into the video (hardcoded) for maximum compatibility. Don't rely on soft subtitles for social media.
-- **Single-pass encode**: Two-pass encoding produces better quality at the same file size. Worth the extra render time.
-- **Ignoring media profile**: YouTube and TikTok have very different requirements. Always check the target profile.
+- **Chinese font rendering**: Ensure the HyperFrames composition loads Google Font Noto Sans SC via `<link>` in `<head>`. Verify the font is being used and not falling back to system fonts.
+- **Background image vs text contrast**: Natural scenery backgrounds vary in brightness. The dark overlay (`rgba(0,0,0,0.35)`) is required for text readability. If background images are unusually bright/dark, adjust overlay opacity accordingly.
+- **Sentence timing (not stagger)**: Each `.sentence` should stay visible long enough to be comfortably read. Default ~2-3s per short sentence, 4-5s for long ones. sync-timings.py will correct from ASR.
+- **Google Fonts offline fallback**: If the render environment has no internet, Noto Sans SC may not load. Add `'PingFang SC', 'Microsoft YaHei', sans-serif` as fallback stack.
+- **mlx_whisper not installed**: sync-timings.py requires `mlx-whisper` (Apple Silicon only). On non-Apple-Silicon machines, pass `--asr-json` with pre-computed Whisper output.
+- **HyperFrames lint failures**: `npx hyperframes lint` catches structural issues (missing data-attributes, broken asset references). Fix all lint errors before re-rendering — don't defer to post-render review.
+- **Background video audio**: If using a background video with audio track, mute it (`muted` attribute) — narration and music are the audio layers.

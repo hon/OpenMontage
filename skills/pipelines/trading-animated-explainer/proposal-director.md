@@ -1,34 +1,51 @@
-# Proposal Director — Explainer Pipeline
+# Proposal Director — Trading Explainer Pipeline
+
+## Customizations from base `animated-explainer/proposal-director.md`
+
+This file is forked from `skills/pipelines/animated-explainer/proposal-director.md`.
+Changes made for the `trading-animated-explainer` pipeline:
+- **Runtime locked to HyperFrames** — no "present both" workflow; `render_runtime` is always `hyperframes`
+- **TTS locked to Edge TTS (zh-CN-YunyangNeural)** — free, Chinese-first, SRT subtitle output
+- **Post-compose sync-timings.py** — mandatory ASR-driven timing correction after HyperFrames render
+- **All Remotion-specific guidance removed** — no React scene stack, no CaptionOverlay, no Remotion chart components
+- **Zero cost enforced** — budget cap is $0.00; all assets must come from free sources (stock photos, Edge TTS, free stock music)
+- **Portrait 9:16 (mobile竖屏)** — target resolution is 1080×1920; all asset planning accounts for portrait framing
 
 ## When to Use
 
-You are the **Proposal Director** for a generated explainer video. You sit between the Research Director and the Script Director. You receive a `research_brief` full of raw findings and transform it into a concrete, reviewable proposal that the user approves before any money is spent.
+You are the **Proposal Director** for a generated trading explainer video. You sit between the Research Director and the Script Director. You receive a `research_brief` full of raw findings and transform it into a concrete, reviewable proposal that the user approves before any money is spent.
 
 **This is the approval gate.** Nothing downstream runs until the user says "go." Your job is to make that decision easy by presenting clear options, honest costs, and explicit tradeoffs.
 
 Think of yourself as a creative agency pitching to a client: you present concepts backed by research, show what it'll cost, explain the tradeoffs, and let the client choose.
 
-## Runtime Selection (required field — `render_runtime`)
+## Runtime Selection (locked — `render_runtime: hyperframes`)
 
-Explainer proposals must lock **both** a `renderer_family` (creative grammar) and a `render_runtime` (technical engine). Read `skills/meta/animation-runtime-selector.md` for the decision matrix and `AGENT_GUIDE.md` → "Present Both Composition Runtimes (HARD RULE)" for the governance contract.
+For the trading-animated-explainer pipeline, `render_runtime` is **always `hyperframes`**.
 
-**MANDATORY workflow — present both runtimes, don't silently default:**
+**Do NOT present Remotion as an option.** Do NOT query `render_engines`. Do NOT ask the user to choose. The entire pipeline — from asset generation through compose and sync — is built around HyperFrames rendering.
 
-1. Query `video_compose.get_info()["render_engines"]`. If both `remotion` and `hyperframes` are `True`, proceed to step 2. If only one is available, go to step 4 with just that one.
-2. Present both runtimes to the user with brief-specific analysis. For THIS concept:
-   - **Remotion** — one line on fit (mention the React scene stack components that apply), one line on tradeoff.
-   - **HyperFrames** — one line on fit (mention HTML/GSAP motion, registry blocks, kinetic typography if applicable), one line on tradeoff.
-3. Recommend one with rationale tied to the brief's `delivery_promise`, `visual_approach`, and whether word-level caption burn is required (that one forces Remotion).
-4. Wait for explicit user approval. Do NOT write `render_runtime` into `proposal_packet.production_plan` before approval.
-5. Log a `render_runtime_selection` decision in `decision_log` with BOTH runtimes (plus `ffmpeg` if it was a realistic option) in `options_considered`, the user's pick as `selected`, and the rationale as `reason`. If a runtime was unavailable, record it as rejected with `rejected_because: "runtime not available on this machine"`.
+Simply record in the proposal:
+```json
+"render_runtime": "hyperframes"
+```
 
-Fit cheat-sheet for recommendation (input for the conversation, not an auto-decision):
+And log a single-entry decision:
+```json
+{
+  "category": "render_runtime_selection",
+  "selected": "hyperframes",
+  "reason": "Locked by trading-animated-explainer pipeline — Chinese TTS + sync-timings.py integration requires HyperFrames HTML/GSAP runtime",
+  "options_considered": [],
+  "rejected_because": null
+}
+```
 
-- Existing React scene stack (text_card, stat_card, bar_chart, line_chart, pie_chart, kpi_grid, callout, comparison, hero_title, caption overlay, anime_scene) fits → recommend **Remotion**.
-- Kinetic typography, custom HTML motion graphics, registry-block-driven scenes, or website-to-video → recommend **HyperFrames**.
-- Word-level/karaoke captions required → **Remotion only** in Phase 1 (caption parity is deferred).
-
-A `render_runtime_selection` decision with only one option considered when both were available is a CRITICAL reviewer finding.
+**Why hyperframes for this pipeline:**
+- Chinese narration via Edge TTS requires SRT subtitle handling — HyperFrames supports custom HTML overlay, vs. Remotion's React-based CaptionOverlay
+- `sync-timings.py` patches HyperFrames `data-start`/`data-duration` attributes directly in `index.html`
+- Trading explainers benefit from kinetic typography and GSAP animations (number count-ups, chart reveals, emphasis animations)
+- No existing React scene stack components are used — every scene is authored as HTML/CSS/GSAP
 
 ## Prerequisites
 
@@ -101,11 +118,11 @@ python -c "from tools.tool_registry import registry; import json; registry.disco
 ```
 
 Record:
-- Which TTS providers are available — run `registry.get_by_capability("tts")` and check status
 - Which video generation providers are available — run `registry.get_by_capability("video_generation")` and check status
 - Which enhancement tools are available
 - Image generation status — run `registry.get_by_capability("image_generation")` and check status
-- **Remotion render engine status** — check `video_compose.get_info()["render_engines"]["remotion"]`. If `true`, Remotion is available for animated text cards, stat cards, charts, spring-physics transitions, and image-to-video rendering. This is a major quality upgrade over Ken Burns pan-and-zoom.
+- **Edge TTS availability** — check `edge-tts --list-voices | grep YunyangNeural` is installed and returns the voice. If missing, install: `pip install edge-tts`
+- **HyperFrames availability** — check `npx hyperframes --version` works. If missing, the compose stage will install it.
 
 This directly affects what you can promise in the production plan. **Do not propose a concept that requires tools you don't have.**
 
@@ -193,7 +210,7 @@ Before choosing or generating a playbook, read `skills/meta/taste-direction.md` 
 
 5. **Use a preset playbook only when it genuinely fits.** If the video is a straightforward corporate explainer, `clean-professional` is fine. But if the topic has its own visual world (nature, space, food, music, sports, history), design a custom identity.
 
-6. **Generate a custom playbook when presets don't match.** Use `lib/playbook_generator.py` to create one from your design decisions. The Remotion theme system will automatically derive colors, fonts, and motion from whatever playbook you create — including custom ones.
+6. **Generate a custom playbook when presets don't match.** Use `lib/playbook_generator.py` to create one from your design decisions. The HyperFrames composition will derive colors, fonts, and animation parameters from the playbook's style values.
 
 **Record your visual identity choices in the proposal_packet:**
 - `production_plan.playbook`: name of preset OR "custom"
@@ -202,18 +219,17 @@ Before choosing or generating a playbook, read `skills/meta/taste-direction.md` 
 - Include the reasoning: "Warm amber palette because the subject is coffee craftsmanship"
 - Log as decision: `category: "playbook_selection"`
 
-**Check Remotion availability** — if `video_compose` reports `render_engines.remotion: true`, design for animated components (text cards, stat cards, charts, spring transitions). This is a major quality upgrade.
+**HyperFrames animation patterns available** (this pipeline is locked to HyperFrames):
 
-**Remotion components available** (when Remotion engine is active):
-- `text_card` — animated text with spring entrance
-- `stat_card` — number + label with count-up animation
-- `callout` — highlighted explanation box
-- `comparison` — side-by-side with animated reveal
-- `progress` — animated progress bar
-- `chart` — bar, line, pie charts with animated data entry
-- `kpi_grid` — multi-stat dashboard layout
+All scene types are authored as HTML/CSS/GSAP sections in HyperFrames. Design for these motion patterns:
+- **Kinetic typography** — animated text reveals, per-character entrances via GSAP SplitText
+- **Number count-up** — counter animation for trading stats, percentages, P&L figures
+- **Chart/data reveals** — SVG/CSS bar/line/pie charts with GSAP-triggered data entry
+- **Comparison/comparison tables** — HTML tables or side-by-side layouts with staggered fade-in
+- **Progress bars** — CSS width animation driven by GSAP
+- **KPI grid** — dashboard-style multi-stat layout with staggered entrance
 
-**Important:** When Remotion is available, **always design for Remotion component scenes** rather than static AI-generated images with Ken Burns pan. This is the difference between a professional motion graphics video and a slideshow.
+**Important:** Every scene uses HTML layout + CSS styling + GSAP animation. There is no React component layer. Design for GSAP timelines and CSS transitions, not React component props.
 
 #### 3d: Duration and Platform
 
@@ -334,34 +350,31 @@ For each stage in the pipeline manifest (`animated-explainer.yaml`), specify:
 For each meaningful choice, present the tradeoff:
 
 ```
-TRADEOFF: TTS Provider
-├── Premium: ElevenLabs ($0.18-0.30) — natural voice, emotional delivery
-├── Standard: OpenAI TTS ($0.05-0.15) — good quality, less expressive
-└── Free: Piper local ($0.00) — robotic but works offline
+TRADEOFF: TTS Provider (locked)
+├── Edge TTS zh-CN-YunyangNeural ($0.00, local) — Chinese male voice,
+│   natural prosody, SRT subtitle export via --write-subtitles.
+│   Requires `pip install edge-tts`. The ONLY TTS option for this pipeline.
 
 TRADEOFF: Visual Assets
 ├── Premium: AI video clips ($0.10-0.50/clip) — motion, dynamic
 ├── Standard: AI images ($0.02-0.04/image) — static, reliable
 └── Free: Diagrams/code ($0.00) — text-based, technical feel
 
-TRADEOFF: Render Path (check video_compose render_engines)
-├── Remotion ($0.00, local): Animated text cards, stat cards, charts,
-│   spring-physics transitions, component-based scenes. Professional
-│   motion graphics feel. Requires Node.js.
-└── FFmpeg ($0.00, local): Ken Burns pan-and-zoom on images, video
-    concat. Functional but less engaging for explainer content.
+TRADEOFF: Render Path (locked to HyperFrames)
+├── HyperFrames ($0.00, local): HTML/CSS/GSAP render. Kinetic
+│   typography, number count-ups, CSS chart animations, SVG
+│   reveals. HTML source is patchable by sync-timings.py.
+│   Requires Node.js ≥ 22.
+└── No alternative render path — this pipeline is HyperFrames-only.
 ```
 
-**If Remotion is available:** Design the scene plan around Remotion component types (text_card, stat_card, chart, etc.) rather than generating AI images for every scene. This is both cheaper (fewer image gen calls) and higher quality (animated motion graphics vs. static images with pan).
+**HyperFrames is the only render path.** All scenes render through HTML/CSS/GSAP with optional AI-generated images. Design scenes for HyperFrames animation patterns (kinetic typography, number count-ups, SVG chart reveals) rather than static Ken Burns.
 
-Also present **alternative production paths** — complete packages at different price points:
+This pipeline has a **$0.00 budget cap**. Only one path exists:
 
-| Path | Quality | Cost | What Changes |
-|------|---------|------|-------------|
-| Premium | Best TTS + video clips + music | ~$1.50-2.50 | Full production value |
-| Standard | Good TTS + images + music | ~$0.50-1.00 | Static visuals, still professional |
-| Budget | Local TTS + images | ~$0.05-0.15 | Robotic voice, image-only |
-| Free | Local TTS + diagrams | $0.00 | Functional but minimal |
+| Path | Cost | What's Included |
+|------|------|-----------------|
+| Zero-cost (locked) | $0.00 | Free stock background images + free stock music + Edge TTS narration + HyperFrames render. No paid AI generation. |
 
 ### Step 5b: Music Plan (Mandatory)
 
@@ -406,15 +419,18 @@ Itemize every paid operation:
 
 ```
 COST ESTIMATE
-├── TTS Narration: tts_selector × 1 run (~150 words)       $0.18
-├── Image Generation: image_selector × 6 scenes                  $0.24
-├── Music: music_gen × 1 track (30s)                        $0.10
+├── TTS Narration: Edge TTS (zh-CN-YunyangNeural) × 1 run   $0.00 (free/local)
+├── Background Images: stock photo search × N scenes         $0.00 (free stock)
+├── Illustrations/Diagrams: stock/search × M scenes          $0.00 (free stock/diagram_gen)
+├── Music: stock music search or music_library/              $0.00 (free stock)
 ├── Video Generation: video_selector × 2 clips (optional)   $0.00 (local)
 ├── Audio Enhancement: audio_enhance × 1 pass               $0.00 (local)
-└── TOTAL ESTIMATED                                         $0.52
-    Budget cap: $2.00
+├── sync-timings.py (ASR + HTML patch)                      $0.00 (local)
+├── Example: 6 bg images + 2 diagrams + stock music          $0.00
+└── TOTAL ESTIMATED                                         $0.00
+    Budget cap: $0.00 (zero-cost pipeline)
     Verdict: within_budget ✓
-    Headroom: $1.48 for revisions/regeneration
+    Headroom: $0.00
 ```
 
 **Rules:**
@@ -454,8 +470,9 @@ Validate the `proposal_packet` artifact against `schemas/artifacts/proposal_pack
 |------------------|------------------------------------|
 | Script Director | `selected_concept` (title, hook, key_points, core_message, tone, narrative_structure) + research_brief data points |
 | Scene Director | `selected_concept.visual_approach` + `production_plan.playbook` |
-| Asset Director | `production_plan.stages[assets].tools` — knows exactly which providers to use |
+| Asset Director | `production_plan.render_runtime` (hyperframes), `production_plan.stages[assets].tools` (Edge TTS) |
 | Executive Producer | `cost_estimate` — initializes budget tracking |
+| Compose Director | `production_plan.render_runtime` (hyperframes) — must match; triggers sync-timings.py post-process |
 | All stages | `approval.approved_budget_usd` — hard spending cap |
 
 The `selected_concept` in the proposal_packet effectively replaces what the old `brief` artifact used to be — but it's grounded in research and comes with an explicit production plan attached.
@@ -497,34 +514,22 @@ The `selected_concept` in the proposal_packet effectively replaces what the old 
 - Grounded in: audience knowledge gap about DNS age, landscape gap (no historical angle found)
 - Why it works: Simplest on-ramp for non-technical audience. The "still works after 40 years" angle is inherently surprising.
 
-**Production plan (for selected concept 1, Remotion available):**
+**Production plan (for this pipeline, HyperFrames only):**
 ```
 script   → no tools, no cost
-scene    → no tools, no cost — design 4 Remotion component scenes + 4 AI image scenes
-assets   → tts_selector ($0.22), image_selector × 4 ($0.16), music_gen ($0.10)
+scene    → no tools, no cost — design 6 HyperFrames HTML scenes (kinetic typography, charts, image scenes)
+assets   → Edge TTS ($0.00 free), image_selector × 4 ($0.16), music_gen ($0.10)
 edit     → no tools, no cost
-compose  → video_compose/Remotion render (free) — animated text cards, stat cards,
-           spring transitions, image scenes with animation. NOT Ken Burns.
+compose  → hyperframes_compose (free) + sync-timings.py (free) — HTML/GSAP render
 publish  → no tools, no cost
-TOTAL: $0.48 of $2.00 budget (saved $0.16 by using Remotion components instead of
-       generating images for text/data scenes)
-```
-
-**Production plan (for selected concept 1, FFmpeg only):**
-```
-script   → no tools, no cost
-scene    → no tools, no cost
-assets   → tts_selector ($0.22), image_selector × 8 ($0.32), music_gen ($0.10)
-edit     → no tools, no cost
-compose  → video_compose/FFmpeg (free) — Ken Burns pan-and-zoom on images
-publish  → no tools, no cost
-TOTAL: $0.64 of $2.00 budget
+TOTAL: $0.26 of $2.00 budget (Edge TTS saves $0.22+ vs cloud TTS)
 ```
 
 **Alternative paths:**
-- Premium (Remotion): Best available TTS + 4 AI images + 4 Remotion animated scenes = $0.48
-- Standard: Mid-tier TTS + images = $0.40
-- Free: Local TTS + Remotion component scenes only = $0.00 (no images, pure motion graphics)
+- Premium: AI video clips + AI images + music = ~$1.50
+- Standard: AI images + music = ~$0.50
+- Budget: AI images only, no music = ~$0.16
+- Free: Diagrams/code snippets only, no images, no music = $0.00
 
 
 ## When You Do Not Know How
@@ -540,8 +545,8 @@ If you encounter a generation technique, provider behavior, or prompting pattern
 This is especially important for:
 - **Video generation prompting** — models respond to specific vocabularies that change with each version
 - **Image model parameters** — optimal settings for FLUX, GPT Image, Imagen differ and evolve
-- **Audio provider quirks** — voice cloning, music generation, and TTS each have model-specific best practices
-- **Remotion component patterns** — new composition techniques emerge as the framework evolves
+- **Edge TTS quirks** — rate/pitch sweet spots for zh-CN-YunyangNeural, SSML phoneme fallbacks for technical terms
+- **HyperFrames animation patterns** — registration blocks, GSAP timeline sequencing, composition structure
 
 Do not rely on stale knowledge. When in doubt, search first.
 
