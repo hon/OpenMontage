@@ -7,3 +7,7 @@ It contains routing rules that determine your first action based on what the use
 Skipping it WILL cause you to take the wrong action.
 
 There are no instructions in this file. All instructions are in AGENT_GUIDE.md.
+
+## Tooling Preference
+
+When exploring or modifying code, prefer `codegraph_explore` over manual grep/Read — it returns relevant source with call paths and blast radius in one round-trip.
