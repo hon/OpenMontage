@@ -55,12 +55,12 @@ These windows become `start_seconds`/`duration_seconds` on each scene in the sce
 
 Each script section maps to **exactly one scene**. Choose a visual mood that matches the emotional beat:
 
-| Script Mood | Recommended Scenery |
-|---|---|
-| Calm / Educational | Misty mountains, calm lake, forest clearing, sunrise meadow |
-| Serious / Weighty | Storm clouds, mountain peak, deep canyon, dark ocean |
-| Hopeful / Inspiring | Sunrise, open field, mountain vista, bird in flight |
-| Neutral / General | City skyline, river, library, open sky |
+| Script Mood | Recommended Scenery | Stock Search Hint |
+|---|---|---|
+| Calm / Educational | Misty mountains, calm lake, forest clearing, sunrise meadow | `"misty mountain lake sunrise landscape"` |
+| Serious / Weighty | Storm clouds, mountain peak, deep canyon, dark ocean | `"dramatic canyon twilight landscape"` |
+| Hopeful / Inspiring | Sunrise, open field, mountain vista, bird in flight | `"golden hour forest sunlight warm"` |
+| Neutral / General | City skyline, river, library, open sky | `"lush rolling hills morning light landscape"` |
 
 **Constraint:** Only use scene types from the template's `scene_types.allowed` list. For example, if the template only allows `background_image`, every scene must be type `background_image`.
 

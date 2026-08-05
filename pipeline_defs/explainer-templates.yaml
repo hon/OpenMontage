@@ -4,11 +4,23 @@ description: >
   解说类视频管线，支持多种视觉模板。用户提供文案 → AI 格式化为视频脚本方案 → 用户确认 →
   按所选模板生成 scene_plan → assets → edit → compose → publish。
   模板定义场景类型、布局骨架、动效方式；风格板（playbook）独立控制颜色/字体/视觉语言。
+  支持参考视频输入（reference_input） — 用户可提供 YouTube/短视频作为灵感。
 
 category: generated
-stability: experimental
+stability: production
 
 default_checkpoint_policy: guided
+
+# Reference video input support
+reference_input:
+  supported: true
+  analysis_depth: standard
+  analysis_tools:
+    - video_analyzer
+    - transcript_fetcher
+    - video_downloader
+    - scene_detect
+    - frame_sampler
 
 extensions:
   custom_scripts: true
@@ -38,6 +50,9 @@ orchestration:
 compatible_playbooks:
   recommended:
     - clean-professional
+    - flat-motion-graphics
+  also_works:
+    - minimalist-diagram
   custom_allowed: true
 
 # ── Template Registry ─────────────────────────────────────────────
@@ -63,7 +78,7 @@ stages:
   - name: script
     skill: pipelines/explainer-templates/script-director
     required_artifacts_in: []
-    optional_artifacts_in: []
+    optional_artifacts_in: [proposal_packet]
     produces:
       - script
     tools_available: []
@@ -76,7 +91,7 @@ stages:
       - Visual concepts fit the selected template's scene types
       - Visual mood shifts match copy tone changes
     success_criteria:
-      - User confirmed script table (confirmation_status: "confirmed")
+      - User confirmed script table (confirmation_status is "confirmed")
       - All sections have label, text, timing, and visual_concept
       - Total duration covers full copy without omission
 
@@ -115,16 +130,21 @@ stages:
     optional_tools:
       - video_selector
       - music_gen
+      - math_animate
     tools_available:
       - tts_selector
       - image_selector
       - video_selector
       - music_gen
+      - math_animate
     checkpoint_required: true
     human_approval_default: true
     review_focus:
       - All asset files exist on disk
       - Narration covers all script sections
+      - Narration assets apply the approved voice performance plan and sample settings
+      - Total cost within approved budget from proposal_packet
+      - Image style consistency across all generated visuals
       - Images sourced from stock photo APIs (zero cost) unless template specifies otherwise
       - Total cost within budget (default $0)
     success_criteria:
