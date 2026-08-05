@@ -61,6 +61,9 @@ internal/
 # Local agent config (user-specific)
 .claude/memory/
 .claude/settings.local.json
+.omo/
+.superpowers/
+docs/superpowers/
 
 # Agent skills lock (local install tracking)
 skills-lock.json
