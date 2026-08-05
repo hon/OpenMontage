@@ -74,7 +74,7 @@ stages:
       - Each 画面构思 fits simple template mode (natural scenery + text overlay, no animation)
       - Visual mood shifts match copy tone changes
     success_criteria:
-      - User confirmed script table (confirmation_status: "confirmed")
+      - User confirmed script table (confirmation_status is "confirmed")
       - All sections have label, text, timing, and visual_concept
       - Total duration covers full copy without omission
     optional_artifacts_in: [proposal_packet]

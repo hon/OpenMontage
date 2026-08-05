@@ -89,6 +89,22 @@ scene_splitting:
   max_seconds_per_scene: 12     # scene-director splits longer script sections
   min_seconds_per_scene: 1.5    # minimum scene duration
 
+timing:
+  # Scene windows are derived from narration cue timestamps — never arbitrary.
+  lead_in_seconds: 0.3          # scene start = first cue start − lead_in
+  tail_seconds: 0.3             # non-last scene: duration = cue span + tail
+  last_tail_seconds: 0.8        # last scene: duration = cue span + last_tail (outro fade room)
+
+title_scene:
+  # Mandatory opening title clip overlaid on scene-1 (compose-director Step 3 item 11).
+  # Emitted as <section class="clip title-clip" data-track-index="3">.
+  enabled: true
+  duration_seconds: 3.0         # readable, but clears before scene-1 hook text
+  track_index: 3                # above scene tracks (1, 2)
+  main_text: ""                 # filled from project title / script metadata
+  sub_text: ""                  # optional subtitle line (e.g. category/author)
+  overlay_opacity: 0.35
+
 files:
   skeleton: templates/minimal/skeleton.html
   style: templates/minimal/style.css

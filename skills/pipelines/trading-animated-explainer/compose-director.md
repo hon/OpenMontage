@@ -264,6 +264,28 @@ This pipeline renders through **HyperFrames** with a fixed template. No complex 
     - Single video: `assets/video/background.mp4`
     - If a scene lacks a dedicated background image, use shared `bg-default.jpg`
 
+11. **Title scene (MANDATORY — every project must emit one):**
+
+    Emit a title clip that overlays scene-1 for the opening ~3s, then fades out. Without it the video starts straight into the hook with no title card — a recurring defect.
+
+    ```html
+    <section id="scene-title" class="clip title-clip" data-start="0" data-duration="3.0" data-track-index="3">
+      <div class="title-overlay"></div>
+      <div class="title-content">
+        <div class="title-main">市场只有事实的一面</div>
+        <div class="title-sub">交易心理</div>
+      </div>
+    </section>
+    ```
+
+    - `data-track-index="3"` renders above both scene tracks (1 and 2)
+    - `.title-clip` MUST be hidden by default in CSS (`opacity: 0`) — the engine relies on this for a clean frame 0 (no `tl.set` needed)
+    - Title text comes from the project title / script metadata, NOT from scene-1's first sentence
+    - Keep `data-duration` ≈ 3.0s: long enough to read the title, short enough that scene-1's hook text still appears during the first narration beat
+    - The engine automatically delays scene-1's sentences by the title duration, so narration/background play under the title while the hook text waits for it to clear
+
+    **sync-timings.py compatibility**: the patcher only matches scenes whose class contains `text-clip`. The title clip (`class="clip title-clip"`) is skipped by ASR matching and left untouched — it is hand-timed (`data-start="0"`, `data-duration` ≈ 3.0) and does not need correction.
+
 ### Step 4: Validate and Render
 
 1. **Run validation:**
@@ -494,6 +516,7 @@ Validate the render_report against the schema and persist via checkpoint.
 
 ## Common Pitfalls
 
+- **Missing title scene (blocked)**: Every project MUST emit a title clip (Step 3, item 11). If the composition starts straight into the hook with no title card, the project is incomplete — add `class="clip title-clip"` at `data-start="0"` with `data-duration` ≈ 3.0 and `data-track-index="3"` before rendering.
 - **Missing asset files**: Always verify every referenced file exists before starting the render. A missing file mid-render wastes time.
 - **Adding animations (blocked)**: Do NOT add GSAP animations beyond simple opacity fades. No slide, scale, stagger, Ken Burns, count-up — this pipeline uses simple template mode by design.
 - **Audio sync drift**: Accumulated timing errors across narration segments cause audio-visual desync. sync-timings.py corrects this, but if ASR confidence is low for key scenes, manual verification is needed.

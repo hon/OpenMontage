@@ -82,6 +82,20 @@ Each scene is a simple text-over-background frame:
 
 **No other scene types exist in this pipeline.** Do not generate `diagram`, `chart`, `stat_card`, `text_card`, `hero_title`, `animation`, or any other type.
 
+#### Timing Windows (binding — derived from narration cues)
+
+Scene windows are NOT arbitrary. They are derived from the narration cue timestamps in the script artifact:
+
+- **Scene start** = first narration cue start in that section **− 0.3s lead-in**
+- **Non-last scene duration** = (last cue end − first cue start) **+ 0.3s tail**
+- **Last scene duration** = (last cue end − first cue start) **+ 0.8s tail** (room for the outro fade)
+- Scene 1 starts at `0.0` (clamp the 0.3s lead-in)
+- Measured narration gaps are 0.10–0.16s — do not stretch scene windows to fill them; the 0.3s lead/tail is sufficient padding
+
+These windows become `data-start` / `data-duration` on each scene `<section>` in the composed HTML. Never use arbitrary round numbers (10s, 8s) — use the cue-derived values, or the audio will drift out of sync with the visuals (recurring defect).
+
+**Opening title scene (binding):** the composition stage overlays a title clip on scene-1 for ~3.0s (`data-track-index="3"`, see compose-director Step 3 item 11). Scene-1's first sentence is delayed by the engine until the title clears. Keep scene-1's narration cue starting ≥ ~0.1s so the title is readable before speech begins.
+
 ### Step 4: Validate
 
 **Coverage check:**
@@ -105,6 +119,7 @@ Call `handle_explainer_scene_plan(state, {"scene_plan": scene_plan_json})` to va
 
 ## Common Pitfalls
 
+- **Arbitrary scene windows (blocked)**: Never use round numbers (10s, 8s) for `start_seconds`/`end_seconds`. Windows must be cue-derived: start = first cue − 0.3s, non-last duration = cue span + 0.3s, last duration = cue span + 0.8s (see Timing Windows above). Arbitrary windows cause narration drift — a recurring defect.
 - **Adding animation**: Do NOT add scene types beyond `background_image`/`background_video`. No chart, diagram, stat card, or animated scenes.
 - **Multiple scenes per section**: Each script section maps to exactly ONE scene. The text changes per sentence within a scene (handled by compose stage), not per visual scene.
 - **Ignoring mood**: A section about "risk of loss" should not have a bright sunny beach background. Match mood to scenery.
