@@ -30,6 +30,27 @@ Read every section. For each, note:
 - What is the emotional beat? (calm/educational, serious/weighty, hopeful/inspiring, neutral/general)
 - How much time is available? (end_seconds - start_seconds)
 
+### Step 1.5: Derive Scene Timing Windows from Narration Cues
+
+Scene `start_seconds`/`end_seconds` are NOT arbitrary. They are derived from the
+script section's narration cue timestamps (read from `state.artifacts["script"]["script"]`).
+
+Read the `timing` config from the active template's `template.yaml`:
+- `timing.lead_in_seconds` (default 0.3) — scene start = first cue start − lead_in
+- `timing.tail_seconds` (default 0.3) — non-last scene: duration = cue span + tail
+- `timing.last_tail_seconds` (default 0.8) — last scene: duration = cue span + last_tail
+
+**Rules:**
+- **Scene start** = first narration cue start in that section − `lead_in_seconds`. Clamp to 0 for scene 1.
+- **Non-last scene duration** = (last cue end − first cue start) + `tail_seconds`
+- **Last scene duration** = (last cue end − first cue start) + `last_tail_seconds` (room for the outro fade)
+- Measured narration gaps are 0.10–0.16s — do not stretch scene windows to fill them; the lead/tail padding is sufficient.
+- **Never use round numbers** (10s, 8s) — use the cue-derived values, or the audio will drift out of sync with the visuals.
+
+The script artifact already carries per-section `start_seconds`/`end_seconds` from the script-director's cue-timed formatting. Use those as the starting point, then apply the lead-in/tail padding from `template.yaml`.
+
+These windows become `start_seconds`/`duration_seconds` on each scene in the scene_plan, which the compose-director translates into `data-start`/`data-duration` on the HTML sections.
+
 ### Step 2: Define Background for Each Section
 
 Each script section maps to **exactly one scene**. Choose a visual mood that matches the emotional beat:
@@ -110,3 +131,4 @@ Validate the scene_plan against the schema and persist via checkpoint.
 - **Search queries too vague**: "nature" won't return good results. Use concrete descriptors: "misty mountain lake sunrise wide shot landscape photography"
 - **Wrong orientation**: All background images must be portrait (1080×1920). Use `orientation: portrait` in search queries.
 - **Duplicate biome**: Two ocean scenes in a row feels repetitive. Vary the scenery type between consecutive scenes.
+- **Arbitrary scene windows (blocked)**: Never use round numbers (10s, 8s) for `start_seconds`/`end_seconds`. Windows must be cue-derived: start = first cue − lead_in, non-last duration = cue span + tail, last duration = cue span + last_tail (see Step 1.5 above). Arbitrary windows cause narration drift — a recurring defect.

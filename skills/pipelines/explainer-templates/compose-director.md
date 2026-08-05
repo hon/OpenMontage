@@ -394,6 +394,7 @@ If any dimension scores below 3, investigate and re-render.
 
 ## Common Pitfalls
 
+- **Missing title scene (blocked)**: Every project MUST emit a title clip (Step 1.6 + Step 2h). If the composition starts straight into the hook with no title card, the project is incomplete — add `class="clip title-clip"` at `data-start="0"` with `data-duration` ≈ 3.0–4.0s and `data-track-index="3"` before rendering.
 - **Missing `opacity:0` on subsequent bg images**: The initial `<img>` must NOT have `opacity:0`, all others MUST. Without this, all backgrounds are visible at once.
 - **Missing `class="clip"` on scenes**: HyperFrames requires `class="clip"` for timeline registration. Missing it = scene never shows.
 - **Missing `class="text-clip"` on scenes**: The GSAP selector `'.clip.text-clip'` won't match without it.
